@@ -21,6 +21,9 @@ def preprocess_radiometric_frame(frame, equalize_hist=True):
     frame = (frame*255.0).astype(np.uint8)
     if equalize_hist:
         frame = cv2.equalizeHist(frame)
+        # CLAHE results in vastly different numbers of feature points depending on clipLimit 
+        #clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(8,8))
+        #frame = clahe.apply(frame)
     return frame
 
 
