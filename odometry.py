@@ -18,11 +18,11 @@ if __name__ == "__main__":
     camera_matrix = pickle.load(open("camera_calibration/parameters/ir/camera_matrix.pkl", "rb"))
     dist_coeffs = pickle.load(open("camera_calibration/parameters/ir/dist_coeffs.pkl", "rb"))
 
-    frames_root = "data_processing/splitted/20210510_Schmalenbach/02_north"
+    frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
-    gps_file = "data_processing/splitted/gps"
+    gps_file = "data_processing/splitted/gps/gps.json"
     gps = json.load(open(gps_file, "r"))
 
     orb = cv2.ORB_create()
@@ -287,76 +287,75 @@ if __name__ == "__main__":
 
                 # ###################################################################
                 # #
-                # # local bundle adjustment
+                # # local bundle adjustment (over last 5 key frames)
                 # #
                 # ###################################################################
                 #
-                # ## setup optimizer and camera parameters
-                # robust_kernel = True
-                # optimizer = g2o.SparseOptimizer()
-                # solver = g2o.BlockSolverSE3(g2o.LinearSolverCholmodSE3())
-                # solver = g2o.OptimizationAlgorithmLevenberg(solver)
-                # optimizer.set_algorithm(solver)
+                # if len(pose_graph.nodes) > 2:
                 #
-                # focal_length = (camera_matrix[0,0] + camera_matrix[1,1]) / 2
-                # principal_point = (camera_matrix[0,2], camera_matrix[1,2])
-                # print("focal_length: ", focal_length, "principal_point: ", principal_point)
-                # cam = g2o.CameraParameters(focal_length, principal_point, 0)
-                # cam.set_id(0)
-                # optimizer.add_parameter(cam)
+                #     # setup optimizer and camera parameters
+                #     robust_kernel = True
+                #     optimizer = g2o.SparseOptimizer()
+                #     solver = g2o.BlockSolverSE3(g2o.LinearSolverCholmodSE3())
+                #     solver = g2o.OptimizationAlgorithmLevenberg(solver)
+                #     optimizer.set_algorithm(solver)
                 #
-                # # add current keyframe poses
-                # poses = []
-                # for i, node_id in enumerate(sorted(pose_graph.nodes)):
-                #     R, t = from_twist(pose_graph.nodes[node_id]["pose"])
-                #     pose = g2o.SE3Quat(R, np.squeeze(t))
-                #     # problems: (fixed)
-                #     # my twist coordinates are first rotation, then translation
-                #     # Se3Quat minimal vector is first translation, then rotation
-                #     # rotation seems to be encoded differently in g2o minimal vector
-                #     poses.append(pose)
+                #     focal_length = (camera_matrix[0,0] + camera_matrix[1,1]) / 2
+                #     principal_point = (camera_matrix[0,2], camera_matrix[1,2])
+                #     print("focal_length: ", focal_length, "principal_point: ", principal_point)
+                #     cam = g2o.CameraParameters(focal_length, principal_point, 0)
+                #     cam.set_id(0)
+                #     optimizer.add_parameter(cam)
                 #
-                #     v_se3 = g2o.VertexSE3Expmap()
-                #     print("pose i ", i)
-                #     v_se3.set_id(i)
-                #     v_se3.set_estimate(pose)
-                #     if i < 2:
-                #         v_se3.set_fixed(True)
-                #     optimizer.add_vertex(v_se3)
+                #     # add current keyframe poses
+                #     poses = []
+                #     nodes = list(sorted(pose_graph.nodes))[-5:]
+                #     for i, node_id in enumerate(nodes):
+                #         print("Adding keyframe {} to bundle adjustment problem".format(node_id))
+                #         R, t = from_twist(pose_graph.nodes[node_id]["pose"])
+                #         pose = g2o.SE3Quat(R, np.squeeze(t))  # note: SE3Quat format differs from my pose format
+                #         poses.append(pose)
                 #
-                # # add map points
-                # point_id = len(poses)
-                # inliers = dict()
-                # for i, point in enumerate(map_points.pts_3d):
-                #     visible = []
-                #     for j, pose in enumerate(poses):
-                #         z = cam.cam_map(pose * point)
-                #         if 0 <= z[0] < 640 and 0 <= z[1] < 512:
-                #             visible.append((j, z))
-                #     if len(visible) < 2:
-                #         continue
+                #         v_se3 = g2o.VertexSE3Expmap()
+                #         v_se3.set_id(i)
+                #         v_se3.set_estimate(pose)
+                #         if node_id < 2:
+                #             v_se3.set_fixed(True)
+                #         optimizer.add_vertex(v_se3)
                 #
-                #     vp = g2o.VertexSBAPointXYZ()
-                #     vp.set_id(point_id)
-                #     vp.set_marginalized(True)
-                #     vp.set_estimate(point)
-                #     optimizer.add_vertex(vp)
+                #     # add map points
+                #     point_id = len(poses)
+                #     inliers = dict()
+                #     for i, point in enumerate(map_points.pts_3d):
+                #         visible = []
+                #         for j, pose in enumerate(poses):
+                #             z = cam.cam_map(pose * point)
+                #             if 0 <= z[0] < 640 and 0 <= z[1] < 512:
+                #                 visible.append((j, z))
+                #         if len(visible) < 2:
+                #             continue
                 #
-                #     for j, z in visible:
-                #         edge = g2o.EdgeProjectXYZ2UV()
-                #         edge.set_vertex(0, vp)
-                #         edge.set_vertex(1, optimizer.vertex(j))
-                #         edge.set_measurement(z)
-                #         edge.set_information(np.identity(2))
-                #         if robust_kernel:
-                #             #edge.set_robust_kernel(g2o.RobustKernelHuber())
-                #             edge.set_robust_kernel(g2o.RobustKernelHuber(np.sqrt(5.991)))  # 95% CI
+                #         vp = g2o.VertexSBAPointXYZ()
+                #         vp.set_id(point_id)
+                #         vp.set_marginalized(True)
+                #         vp.set_estimate(point)
+                #         optimizer.add_vertex(vp)
                 #
-                #         edge.set_parameter_id(0, 0)
-                #         optimizer.add_edge(edge)
+                #         for j, z in visible:
+                #             edge = g2o.EdgeProjectXYZ2UV()
+                #             edge.set_vertex(0, vp)
+                #             edge.set_vertex(1, optimizer.vertex(j))
+                #             edge.set_measurement(z)
+                #             edge.set_information(np.identity(2))
+                #             if robust_kernel:
+                #                 #edge.set_robust_kernel(g2o.RobustKernelHuber())
+                #                 edge.set_robust_kernel(g2o.RobustKernelHuber(np.sqrt(5.991)))  # 95% CI
                 #
-                #     inliers[point_id] = i
-                #     point_id += 1
+                #             edge.set_parameter_id(0, 0)
+                #             optimizer.add_edge(edge)
+                #
+                #         inliers[point_id] = i
+                #         point_id += 1
                 #
                 # print('num vertices:', len(optimizer.vertices()))
                 # print('num edges:', len(optimizer.edges()))
@@ -367,15 +366,15 @@ if __name__ == "__main__":
                 # optimizer.optimize(10)
                 #
                 # # # read out optimized poses
-                # for i in range(len(poses)):
+                # for i, node_id in enumerate(nodes):
                 #     vp = optimizer.vertex(i)
                 #     se3quat = vp.estimate()
                 #     R = np.copy(se3quat.to_homogeneous_matrix()[0:3, 0:3])
                 #     t = np.copy(se3quat.to_homogeneous_matrix()[0:3, 3])
-                #     pose_graph.nodes[i]["pose"] = to_twist(R, t)
+                #     pose_graph.nodes[node_id]["pose"] = to_twist(R, t)
                 #
                 # # read out optimized map points
-                # for i, point_id in enumerate(inliers):
+                # for point_id, i in inliers.items():
                 #     vp = optimizer.vertex(point_id)
                 #     map_points.pts_3d[i, :] = np.copy(vp.estimate())
 
