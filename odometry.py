@@ -1,5 +1,6 @@
 import os
 import glob
+import json
 import pickle
 import numpy as np
 import cv2
@@ -17,9 +18,12 @@ if __name__ == "__main__":
     camera_matrix = pickle.load(open("camera_calibration/parameters/ir/camera_matrix.pkl", "rb"))
     dist_coeffs = pickle.load(open("camera_calibration/parameters/ir/dist_coeffs.pkl", "rb"))
 
-    frames_root = "/storage/data/splitted/20210510_Schmalenbach/02_north"
+    frames_root = "data_processing/splitted/20210510_Schmalenbach/02_north"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
+
+    gps_file = "data_processing/splitted/gps"
+    gps = json.load(open(gps_file, "r"))
 
     orb = cv2.ORB_create()
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -36,18 +40,15 @@ if __name__ == "__main__":
 
     def dump_result(path="."):
         pickle.dump(map_points, open(os.path.join(path, "map_points.pkl"), "wb"))
-        kf_poses = [data["pose"] for _, data in pose_graph.nodes.data()]
-        pickle.dump(kf_poses, open(os.path.join(path, "kf_poses.pkl"), "wb"))
-        kf_frames = [data["frame"] for _, data in pose_graph.nodes.data()]
-        pickle.dump(kf_frames, open(os.path.join(path, "kf_frames.pkl"), "wb"))
-        kf_frame_names = [data["frame_name"] for _, data in pose_graph.nodes.data()]
-        pickle.dump(kf_frame_names, open(os.path.join(path, "kf_frame_names.pkl"), "wb"))
-
-        # keypoints and ORB descriptors can't be pickled, thus remove from pose graph
         for node in pose_graph.nodes:
-            del pose_graph.nodes[node]["kp"]
-            del pose_graph.nodes[node]["des"]
+            pose_graph.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph.nodes[node]["kp"])
         pickle.dump(pose_graph, open(os.path.join(path, "pose_graph.pkl"), "wb"))
+        #kf_poses = [data["pose"] for _, data in pose_graph.nodes.data()]
+        # pickle.dump(kf_poses, open(os.path.join(path, "kf_poses.pkl"), "wb"))
+        # kf_frames = [data["frame"] for _, data in pose_graph.nodes.data()]
+        # pickle.dump(kf_frames, open(os.path.join(path, "kf_frames.pkl"), "wb"))
+        # kf_frame_names = [data["frame_name"] for _, data in pose_graph.nodes.data()]
+        # pickle.dump(kf_frame_names, open(os.path.join(path, "kf_frame_names.pkl"), "wb"))
 
 
     cv2.namedWindow("match_frame", cv2.WINDOW_NORMAL)
