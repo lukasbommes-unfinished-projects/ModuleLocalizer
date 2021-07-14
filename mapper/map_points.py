@@ -24,6 +24,12 @@ class MapPoints:
             associated_kp_indices sublist [113, 20, 5] means that the map point
             corresponds to key point 113 in key frame 0, key point 20 in key frame 1
             and key point 5 in key frame 2.
+
+        representative_orb (`list` of `numpy.ndarray`): Contains for each map
+            point the representative ORB descriptor (array of dtype uint8 and
+            shape (32,)). The most representative descriptor is the one which
+            has the smallest Hamming distance to all other descriptors of that
+            map points in the other observing key frames.
     """
     def __init__(self):
         """Map points"""
