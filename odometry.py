@@ -8,7 +8,7 @@ import networkx as nx
 import g2o
 
 from mapper.map_points import MapPoints
-from mapper.common import Capture
+from mapper.common import Capture, get_visible_points, update_matched_flag
 from mapper.keypoints import extract_keypoints, match
 from mapper.geometry import from_twist, to_twist, estimate_camera_pose, \
     triangulate_map_points
@@ -123,6 +123,9 @@ if __name__ == "__main__":
         pose_graph.nodes[0]["pose"] = to_twist(R1, t1)
         pose_graph.nodes[1]["pose"] = to_twist(R2, t2)
 
+        # update boolean flags indicating which of the keypoints where matched
+        update_matched_flag(pose_graph, matches)
+
         # triangulate initial 3D point cloud
         pts_3d = triangulate_map_points(last_pts, current_pts, R1, t1, R2, t2, camera_matrix)
 
@@ -131,7 +134,12 @@ if __name__ == "__main__":
 
         # add triangulated points to map points
         associated_kp_indices = [[m.queryIdx, m.trainIdx] for m in matches]
-        map_points.insert(pts_3d, associated_kp_indices, observing_kfs=[0, 1])  # triangulatedmap points between KF0 and KF1
+        representative_orb = [des[m.trainIdx, :] for m in matches]
+        map_points.insert(
+            pts_3d,
+            associated_kp_indices,
+            representative_orb,
+            observing_kfs=[0, 1])  # triangulatedmap points between KF0 and KF1
 
         print("Initialization successful. Chose frames 0 and {} as key frames".format(frame_idx_init))
 
@@ -215,7 +223,7 @@ if __name__ == "__main__":
                 current_des, pose_graph.nodes[prev_node_id]["kp"],
                 current_kp, match_max_distance, draw=True)
 
-            vis_frame = cv2.drawKeypoints(np.copy(frame), current_kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            #vis_frame = cv2.drawKeypoints(np.copy(frame), current_kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
             # determine median distance between all matched feature points
             median_dist = np.median(np.linalg.norm(last_pts.reshape(-1, 2)-current_pts.reshape(-1, 2), axis=1))
@@ -280,9 +288,17 @@ if __name__ == "__main__":
                     pose=to_twist(R_current, t_current))
                 pose_graph.add_edge(prev_node_id, prev_node_id+1, num_matches=len(matches))
 
+                # update boolean flags indicating which of the keypoints where matched
+                update_matched_flag(pose_graph, matches)
+
                 # add new map points
                 associated_kp_indices = [[m.queryIdx, m.trainIdx] for m in matches]
-                map_points.insert(pts_3d, associated_kp_indices, observing_kfs=[prev_node_id, prev_node_id+1])
+                representative_orb = [current_des[m.trainIdx, :] for m in matches]
+                map_points.insert(
+                    pts_3d,
+                    associated_kp_indices,
+                    representative_orb,
+                    observing_kfs=[prev_node_id, prev_node_id+1])
                 print("pts_3d.mean: ", np.median(pts_3d, axis=0))
 
 
@@ -301,6 +317,43 @@ if __name__ == "__main__":
                 #    descriptor of the map point)
                 # 4) If a match is found, add the corresponding keyframe to the list of observing keyframes for that map point
                 # 5) Update the representative ORB descriptor of that map point
+
+                for node_id in sorted(pose_graph.nodes):
+                    # project map points into each key frame
+                    R, t = from_twist(pose_graph.nodes[node_id]["pose"])
+                    t = -R.T.dot(t)
+                    R = R.T
+                    projected_pts, _ = cv2.projectPoints(map_points.pts_3d,
+                        R, t, camera_matrix, None)
+                    # filter out those which do not lie within the frame bounds
+                    #projected_pts = get_visible_points(projected_pts,
+                    #    frame_width=frame.shape[1], frame_height=frame.shape[0])
+
+                    # visualize projected map points
+                    if node_id == prev_node_id:
+                        for pts in projected_pts:
+                            match_frame = cv2.circle(match_frame, (int(pts[0, 0]), int(pts[0, 1])), 4, (0, 0, 255))
+
+                #     pickle.dump(projected_pts, open("projected_pts_{}.pkl".format(node_id), "wb"))
+                #
+                # pose_graph_ = pose_graph.copy()
+                # for node in pose_graph_.nodes:
+                #     pose_graph_.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph_.nodes[node]["kp"])
+                # pickle.dump(pose_graph_, open("pose_graph_.pkl", "wb"))
+                # pickle.dump(map_points, open("map_points_.pkl", "wb"))
+
+                    # for each projected point visible in KF[node_id]
+                    # search for matches with keypointsin local neighborhod of projected point
+                    # if match could be found update the visible KF and associated kp indices of the corresponding map point
+
+                    # for each projected map point retrieve keypoints in current frame which are in the local neighborhood of the projected point
+
+
+
+                    # search neighborhood of each projected point for unmatched ORB
+                    # descriptor that is similar to the representative descriptor
+                    # of the map point
+
 
                 # ###################################################################
                 # #

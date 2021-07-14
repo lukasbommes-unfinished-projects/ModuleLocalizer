@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 
 
@@ -25,29 +26,40 @@ class MapPoints:
             corresponds to key point 113 in key frame 0, key point 20 in key frame 1
             and key point 5 in key frame 2.
 
-        representative_orb (`list` of `numpy.ndarray`): Contains for each map
-            point the representative ORB descriptor (array of dtype uint8 and
-            shape (32,)). The most representative descriptor is the one which
-            has the smallest Hamming distance to all other descriptors of that
-            map points in the other observing key frames.
+        representative_orb (`numpy.ndarray`): Each row is the representative
+            ORB descriptor corresponding to the map point in pts_3d. This is an
+            array of dtype uint8 and shape (num_map_points, 32). The most
+            representative descriptor is the one which has the smallest Hamming
+            distance to all other descriptors of that map points in the other
+            observing key frames.
     """
     def __init__(self):
         """Map points"""
         self.idx = None
         self.pts_3d = np.empty(shape=(0, 3), dtype=np.float64)
+        self.representative_orb = np.empty(shape=(0, 32), dtype=np.uint8)
         self.observing_keyframes = []
         self.associated_kp_indices = []
 
-    def insert(self, new_map_points, associated_kp_indices, observing_kfs):
+    def insert(self, new_map_points, associated_kp_indices,
+            representative_orb, observing_kfs):
         """Add new map points into the exiting map."""
         if self.idx is not None:
-            self.idx = np.hstack((self.idx, np.arange(self.idx[-1]+1, self.idx[-1]+1+new_map_points.shape[0])))
+            self.idx = np.hstack(
+                (self.idx, np.arange(self.idx[-1]+1,
+                self.idx[-1]+1+new_map_points.shape[0])))
         else:
             self.idx = np.arange(0, new_map_points.shape[0])
         self.pts_3d = np.vstack((self.pts_3d, new_map_points))
         for _ in range(new_map_points.shape[0]):
-            self.observing_keyframes.append(observing_kfs)
+            self.observing_keyframes.append(copy.copy(observing_kfs))
         self.associated_kp_indices.extend(associated_kp_indices)
+        self.representative_orb = np.vstack(
+            (self.representative_orb, representative_orb))
+
+    # def update_observing_keyframes(new_kfs, new_associated_kp_indices):
+
+    # def update_representative_orb()
 
     def get_by_observation(self, keyframe_idx):
         """Get all map points observed by a keyframe."""

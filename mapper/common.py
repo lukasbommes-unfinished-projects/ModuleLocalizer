@@ -21,7 +21,7 @@ def preprocess_radiometric_frame(frame, equalize_hist=True):
     frame = (frame*255.0).astype(np.uint8)
     if equalize_hist:
         frame = cv2.equalizeHist(frame)
-        # CLAHE results in vastly different numbers of feature points depending on clipLimit 
+        # CLAHE results in vastly different numbers of feature points depending on clipLimit
         #clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(8,8))
         #frame = clahe.apply(frame)
     return frame
@@ -75,3 +75,31 @@ class Capture:
                 if self.mask_files is not None:
                     masks = [cv2.remap(mask, self.mapx, self.mapy, cv2.INTER_CUBIC) for mask in masks]
         return frame, masks, frame_name, mask_names
+
+
+def get_visible_points(pts, frame_width, frame_height):
+    """Remove points from pts which fall outside the frame."""
+    min_bb = np.array([0, 0])
+    max_bb = np.array([frame_width, frame_height])
+    visible = np.all(np.logical_and(
+        min_bb <= pts.reshape(-1, 2), pts.reshape(-1, 2) <= max_bb), axis=1)
+    return pts[visible]
+
+
+def update_matched_flag(pose_graph, matches):
+    """Sets a boolean flag for each keypoint in the pose graph
+    indicating whether this keypoint was already matched to
+    another keypoint in another key frame.
+    """
+    train_idxs = [m.trainIdx for m in matches]
+    query_idxs = [m.queryIdx for m in matches]
+    prev_node_id = sorted(pose_graph.nodes)[-1]
+
+    num_kps = len(pose_graph.nodes[prev_node_id]["kp"])
+    pose_graph.nodes[prev_node_id]["kp_matched"] = [
+        True if i in train_idxs else False for i in range(num_kps)]
+
+    pose_graph.nodes[prev_node_id-1]
+    num_kps = len(pose_graph.nodes[prev_node_id-1]["kp"])
+    pose_graph.nodes[prev_node_id-1]["kp_matched"] = [
+        True if i in query_idxs else False for i in range(num_kps)]

@@ -8,7 +8,7 @@ def extract_keypoints(frame, fast, orb, use_ssc=False,
     ssc_num_retain_points=3000, ssc_threshold=0.1):
     """Extracts FAST feature points and ORB descriptors in the frame."""
     kp = fast.detect(frame, None)
-    kp = sorted(kp, key = lambda x:x.response, reverse=True)
+    kp = sorted(kp, key=lambda x:x.response, reverse=True)
     if use_ssc:
         kp = ssc(kp, ssc_num_retain_points, ssc_threshold,
             frame.shape[1], frame.shape[0])
@@ -18,7 +18,7 @@ def extract_keypoints(frame, fast, orb, use_ssc=False,
 
 def match(bf, last_keyframe, frame, last_des, des, last_kp, kp, distance_threshold=30.0, draw=True):
     matches = bf.match(last_des, des)
-    matches = sorted(matches, key = lambda x:x.distance)
+    matches = sorted(matches, key=lambda x:x.distance)
     # filter out matches with distance (descriptor appearance) greater than threshold
     matches = [m for m in matches if m.distance < distance_threshold]
     print("Found {} matches of current frame with last key frame".format(len(matches)))
