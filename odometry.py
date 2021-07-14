@@ -285,6 +285,23 @@ if __name__ == "__main__":
                 map_points.insert(pts_3d, associated_kp_indices, observing_kfs=[prev_node_id, prev_node_id+1])
                 print("pts_3d.mean: ", np.median(pts_3d, axis=0))
 
+
+                ###################################################################
+                #
+                # Data association
+                #
+                ###################################################################
+
+                # TODO:
+                # For each map point
+                # 1) project map point into each keyframe
+                # 2) ignore keyframes in which the projection is out of the frame bounds
+                # 3) search in a local region around the projected point for still
+                #    unmatched ORB descriptors (using the representative ORB
+                #    descriptor of the map point)
+                # 4) If a match is found, add the corresponding keyframe to the list of observing keyframes for that map point
+                # 5) Update the representative ORB descriptor of that map point
+
                 # ###################################################################
                 # #
                 # # local bundle adjustment (over last 5 key frames)
@@ -308,31 +325,29 @@ if __name__ == "__main__":
                 #     optimizer.add_parameter(cam)
                 #
                 #     # add current keyframe poses
-                #     poses = []
+                #     true_poses = []
                 #     nodes = list(sorted(pose_graph.nodes))[-5:]
                 #     for i, node_id in enumerate(nodes):
-                #         print("Adding keyframe {} to bundle adjustment problem".format(node_id))
+                #         print("Using keyframe {} for local BA".format(node_id))
                 #         R, t = from_twist(pose_graph.nodes[node_id]["pose"])
-                #         pose = g2o.SE3Quat(R, np.squeeze(t))  # note: SE3Quat format differs from my pose format
-                #         poses.append(pose)
+                #         pose = g2o.SE3Quat(R, np.squeeze(t))
+                #         true_poses.append(pose)
                 #
                 #         v_se3 = g2o.VertexSE3Expmap()
-                #         v_se3.set_id(i)
+                #         v_se3.set_id(node_id)
                 #         v_se3.set_estimate(pose)
-                #         if node_id < 2:
-                #             v_se3.set_fixed(True)
+                #         #if i < 2:
+                #         #if i == 0:
+                #             #v_se3.set_fixed(True)
                 #         optimizer.add_vertex(v_se3)
                 #
                 #     # add map points
-                #     point_id = len(poses)
+                #     point_id = len(pose_graph) #len(true_poses)
                 #     inliers = dict()
-                #     for i, point in enumerate(map_points.pts_3d):
-                #         visible = []
-                #         for j, pose in enumerate(poses):
-                #             z = cam.cam_map(pose * point)
-                #             if 0 <= z[0] < 640 and 0 <= z[1] < 512:
-                #                 visible.append((j, z))
-                #         if len(visible) < 2:
+                #     for i, (point, observing_keyframes, associated_kp_indices) in enumerate(zip(map_points.pts_3d, map_points.observing_keyframes, map_points.associated_kp_indices)):
+                #
+                #         # skip points not visible in the selected subset of key frames
+                #         if (observing_keyframes[0] not in nodes) or (observing_keyframes[1] not in nodes):
                 #             continue
                 #
                 #         vp = g2o.VertexSBAPointXYZ()
@@ -341,11 +356,21 @@ if __name__ == "__main__":
                 #         vp.set_estimate(point)
                 #         optimizer.add_vertex(vp)
                 #
-                #         for j, z in visible:
+                #         # TODO:
+                #         # 1) retrieve all key frames in which this map point is visible
+                #         # 2) retrieve pixel coordinates of the keypoint corresponding to this map point in each key frame from 1)
+                #         # 3) add an edge for each observation of the map point as below
+                #         for node_id, kp_idx in zip(observing_keyframes, associated_kp_indices):
+                #             #if node_id not in nodes:
+                #             #    continue
+                #             kp = cv2.KeyPoint_convert(pose_graph.nodes[node_id]["kp"])
+                #             measurement = kp[kp_idx]
+                #             #print(i, point_id, node_id, measurement)
+                #
                 #             edge = g2o.EdgeProjectXYZ2UV()
-                #             edge.set_vertex(0, vp)
-                #             edge.set_vertex(1, optimizer.vertex(j))
-                #             edge.set_measurement(z)
+                #             edge.set_vertex(0, vp)  # map point
+                #             edge.set_vertex(1, optimizer.vertex(node_id))  # pose of observing keyframe
+                #             edge.set_measurement(measurement)   # needs to be set to the keypoint pixel position corresponding to that map point in that key frame (pose)
                 #             edge.set_information(np.identity(2))
                 #             if robust_kernel:
                 #                 #edge.set_robust_kernel(g2o.RobustKernelHuber())
@@ -357,8 +382,8 @@ if __name__ == "__main__":
                 #         inliers[point_id] = i
                 #         point_id += 1
                 #
-                # print('num vertices:', len(optimizer.vertices()))
-                # print('num edges:', len(optimizer.edges()))
+                #     print('num vertices:', len(optimizer.vertices()))
+                #     print('num edges:', len(optimizer.edges()))
                 #
                 # print('Performing full BA:')
                 # optimizer.initialize_optimization()
@@ -366,8 +391,9 @@ if __name__ == "__main__":
                 # optimizer.optimize(10)
                 #
                 # # # read out optimized poses
-                # for i, node_id in enumerate(nodes):
-                #     vp = optimizer.vertex(i)
+                # for node_id in nodes:
+                #     print(node_id)
+                #     vp = optimizer.vertex(node_id)
                 #     se3quat = vp.estimate()
                 #     R = np.copy(se3quat.to_homogeneous_matrix()[0:3, 0:3])
                 #     t = np.copy(se3quat.to_homogeneous_matrix()[0:3, 3])

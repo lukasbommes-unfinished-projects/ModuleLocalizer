@@ -1,0 +1,7 @@
+1) Build Covisibility Graph using pyDboW
+
+2) Implement data association, i.e. determine which map point in visible in which keyframe
+
+3) Get BA to work using the associated map points
+
+4) Solve GPS registration as described in Bu_2016.pdf
