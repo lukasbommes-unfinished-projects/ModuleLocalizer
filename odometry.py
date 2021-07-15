@@ -3,7 +3,7 @@ import glob
 import json
 import pickle
 import copy
-from collections import defaultdict
+from collections import defaultdict, Counter
 import numpy as np
 import cv2
 import networkx as nx
@@ -15,6 +15,10 @@ from mapper.common import Capture, get_visible_points, update_matched_flag
 from mapper.keypoints import extract_keypoints, match
 from mapper.geometry import from_twist, to_twist, estimate_camera_pose, \
     triangulate_map_points
+
+# TODO:
+# try out FLANN matcher with epipolar contraint to speed up ORB matching and reduce outliers
+# see: https://docs.opencv.org/4.5.2/da/de9/tutorial_py_epipolar_geometry.html
 
 
 if __name__ == "__main__":
@@ -369,144 +373,105 @@ if __name__ == "__main__":
                         pose_graph.add_edge(
                             newest_node_id, node_id, num_matches=len(projected_pts))
 
-                # ###################################################################
-                # #
-                # # Data association
-                # #
-                # ###################################################################
+                ###################################################################
                 #
-                # print("########## performing data association ###########")
+                # Data association
                 #
-                # newest_node_id = list(sorted(pose_graph.nodes))[-1]
-                # print("Data association for keyframe {}".format(newest_node_id))
-                #
-                # # get node_ids of neighboring keyframes
-                # neighbors_keyframes = [node_id for _, node_id in sorted(
-                #     pose_graph.edges(newest_node_id))]
-                # print("Neighboring keyframes: {}".format(neighbors_keyframes))
-                #
-                # # obtain local map, i.e. map points visible in the neighbouring key frames
-                # map_points_local = copy.deepcopy(map_points)
-                # print("Size of local map: {} - Size of global map: {}".format(
-                #     len(map_points_local.idx), len(map_points.idx)))
-                # delete_idxs = []
-                # for map_point_idx, observation in reversed(
-                #     list(enumerate(map_points.observations))):
-                #     if not any([keyframe_idx in neighbors_keyframes
-                #             for keyframe_idx in observation.keys()]):
-                #         delete_idxs.append(map_point_idx)
-                #         del map_points_local.observations[map_point_idx]
-                # if len(delete_idxs) > 0:
-                #     delete_idxs = np.hstack(delete_idxs)
-                #     map_points_local.idx = np.delete(
-                #         map_points_local.idx, delete_idxs, axis=0)
-                #     map_points_local.pts_3d = np.delete(
-                #         map_points_local.pts_3d, delete_idxs, axis=0)
-                #     map_points_local.representative_orb = np.delete(
-                #         map_points_local.representative_orb, delete_idxs, axis=0)
-                #
-                # print("Size of local map: {} - Size of global map: {}".format(
-                #     len(map_points_local.idx), len(map_points.idx)))
-                #
-                #
-                # descriptors = defaultdict(list)
-                # for node_id in neighbors_keyframes:
-                #
-                #     #frame = pose_graph.nodes[node_id]["frame"]
-                #     #frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-                #
-                #     # project map points into each key frame
-                #     R, t = from_twist(pose_graph.nodes[node_id]["pose"])
-                #     projected_pts, _ = cv2.projectPoints(map_points_local.pts_3d,
-                #         R.T, -R.T.dot(t), camera_matrix, None)
-                #
-                #     #projected_pts = pickle.load(open("projected_pts_{}.pkl".format(node_id), "rb"))
-                #     for pts in projected_pts:
-                #         frame = cv2.circle(frame, (int(pts[0, 0]), int(pts[0, 1])), 4, (0, 0, 255))
-                #
-                #     # for each projected point visible in KF[node_id]
-                #     # search for matches with keypoints in local neighborhod of projected point
-                #     # if match could be found update the visible KF and associated kp indices of the corresponding map point
-                #     kp = pose_graph.nodes[node_id]["kp"]
-                #     des = pose_graph.nodes[node_id]["des"]
-                #     #kp_matched = np.array(pose_graph.nodes[node_id]["kp_matched"])
-                #
-                #     # build a mask for ORB descriptor matching which permits only matches of nearby points
-                #     # this is slow: it would be better if we could ignore the keypoints that are already matched
-                #     max_distance = 8.0  # px
-                #     mask = np.zeros((len(map_points_local.representative_orb), len(des)), dtype=np.uint8)
-                #     kdtree = KDTree(cv2.KeyPoint_convert(kp).astype(np.uint16))  # KD-tree for fast lookup of neighbors
-                #     neighbor_kp_idxs = kdtree.query_ball_point(projected_pts.reshape(-1, 2), r=max_distance)
-                #     for map_point_idx, kp_idxs in enumerate(neighbor_kp_idxs):
-                #         for kp_idx in kp_idxs:
-                #             mask[map_point_idx, kp_idx] = 1
-                #     print("mask sum:", np.sum(mask))
-                #     #break
-                #
-                #     # find matches between projected map points and descriptors
-                #     distance_threshold = 20.0
-                #     bf_local = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)  # set to False
-                #     matches = bf_local.match(map_points_local.representative_orb, des, mask)  # TODO: select only those map points of the local group
-                #     #matches = sorted(matches, key = lambda x:x.distance)
-                #     # filter out matches with distance (descriptor appearance) greater than threshold
-                #     matches = [m for m in matches if m.distance < distance_threshold]
-                #     print("Found {} new matches".format(len(matches)))
-                #
-                #     # for match in matches:
-                #     #     map_point_idx = match.queryIdx
-                #     #     kp_idx = match.trainIdx
-                #     #     pt1 = (int(projected_pts[map_point_idx, 0, 0]), int(projected_pts[map_point_idx, 0, 1]))
-                #     #     pt2 = (int(kp[kp_idx].pt[0]), int(kp[kp_idx].pt[1]))
-                #     #     frame = cv2.line(frame, pt1, pt2, (255,0,0), 1)
-                #
-                #     # get only those projected map points visible in the current key frame
-                #     _, visible = get_visible_points(projected_pts, frame_width=frame.shape[1], frame_height=frame.shape[0])
-                #
-                #     # matches meaning:
-                #     # m.queryIdx: index of projected map point
-                #     # m.trainIdx: index of keypoint in current KF
-                #
-                #     for m in matches:
-                #         map_point_idx_local = m.queryIdx
-                #         map_point_idx = map_points_local.idx[map_point_idx_local]  # map idx from local to global map
-                #         kp_idx = m.trainIdx
-                #
-                #         if not visible[map_point_idx_local]:
-                #             #print("map point ", map_point_idx, " not visible")
-                #             continue
-                #
-                #         descriptors[map_point_idx].append(des[kp_idx])
-                #
-                #         if node_id in map_points.observations[map_point_idx]:  # should not be the case anyway
-                #             continue
-                #
-                #         # update observing keyframes and associated keypoint indices
-                #         map_points.observations[map_point_idx][node_id] = kp_idx
-                #         #print("kp_idx", kp_idx)
-                #         #print(map_points.observing_keyframes[map_point_idx])
-                #         #print(map_points.associated_kp_indices[map_point_idx])
-                #
-                #     # for p, matched in zip(kp, kp_matched):
-                #     #     if matched:
-                #     #         color = (255, 255, 0)
-                #     #     else:
-                #     #         color = (0, 255, 0)
-                #     #     frame = cv2.circle(frame, (int(p.pt[0]), int(p.pt[1])), 4, color)
-                #     #
-                #     # # colors
-                #     # # red : projected map points
-                #     # # cyan : current kps alreay matched
-                #     # # green : current kps unmatched
-                #     # fig = plt.figure()
-                #     # fig.set_size_inches(20,20)
-                #     # plt.imshow(frame[:, :, ::-1])
-                #     # plt.show()
-                #
-                # # update representative ORB descriptors of map points
-                # for map_point_idx, des in descriptors.items():
-                #     if len(des) < 2:
-                #         continue
-                #     map_points.representative_orb[map_point_idx, :] = get_representative_orb(des)
+                ###################################################################
+
+                print("########## performing data association ###########")
+
+                newest_node_id = list(sorted(pose_graph.nodes))[-1]
+                print("Data association for keyframe {}".format(newest_node_id))
+
+                # get node_ids of neighboring keyframes
+                neighbors_keyframes = [node_id for _, node_id in sorted(
+                    pose_graph.edges(newest_node_id))]
+                print("Neighboring keyframes: {}".format(neighbors_keyframes))
+
+                # obtain map points visible in the neighbouring key frames
+                map_points_local = copy.deepcopy(map_points)
+                print("Size of local map: {} - Size of global map: {}".format(
+                    len(map_points_local.idx), len(map_points.idx)))
+                delete_idxs = []
+                for map_point_idx, observation in reversed(
+                    list(enumerate(map_points.observations))):
+                    if not any([keyframe_idx in neighbors_keyframes
+                            for keyframe_idx in observation.keys()]):
+                        delete_idxs.append(map_point_idx)
+                        del map_points_local.observations[map_point_idx]
+                if len(delete_idxs) > 0:
+                    delete_idxs = np.hstack(delete_idxs)
+                    map_points_local.idx = np.delete(
+                        map_points_local.idx, delete_idxs, axis=0)
+                    map_points_local.pts_3d = np.delete(
+                        map_points_local.pts_3d, delete_idxs, axis=0)
+                    map_points_local.representative_orb = np.delete(
+                        map_points_local.representative_orb, delete_idxs, axis=0)
+
+                print("Size of local map: {} - Size of global map: {}".format(len(map_points_local.idx), len(map_points.idx)))
+
+
+                descriptors = defaultdict(list)
+                for node_id in neighbors_keyframes:
+                    # project map points into each key frame
+                    R, t = from_twist(pose_graph.nodes[node_id]["pose"])
+                    projected_pts, _ = cv2.projectPoints(map_points_local.pts_3d,
+                        R.T, -R.T.dot(t), camera_matrix, None)
+
+                    # for each projected point visible in KF[node_id]
+                    # search for matches with keypoints in local neighborhod of projected point
+                    # if match could be found update the visible KF and associated kp indices of the corresponding map point
+                    kp = pose_graph.nodes[node_id]["kp"]
+                    kp = cv2.KeyPoint_convert(kp)
+                    des = pose_graph.nodes[node_id]["des"]
+                    #kp_matched = np.array(pose_graph.nodes[node_id]["kp_matched"])
+
+                    # possible improvements:
+                    # compute fundamental matrix from essential matrix
+                    # use cv2.computeCorrespondEpilines to compute epipolar lines in this key frame (with node_id)
+                    # search along epipolar line for matches instead of building the mask and brute force matching
+
+                    # build a mask for ORB descriptor matching which permits only matches of nearby points
+                    # this is slow: it would be better if we could ignore the keypoints that are already matched
+                    max_distance = 8.0  # px
+                    mask = np.zeros((len(map_points_local.representative_orb), len(des)), dtype=np.uint8)
+                    kdtree = KDTree(kp.reshape(-1, 2).astype(np.uint16))  # KD-tree for fast lookup of neighbors
+                    neighbor_kp_idxs = kdtree.query_ball_point(projected_pts.reshape(-1, 2), r=max_distance)
+                    for map_point_idx, kp_idxs in enumerate(neighbor_kp_idxs):
+                        for kp_idx in kp_idxs:
+                            mask[map_point_idx, kp_idx] = 1
+
+                    # find matches between projected map points and descriptors
+                    distance_threshold = 20.0
+                    bf_local = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)  # set to False
+                    matches = bf_local.match(map_points_local.representative_orb, des, mask)  # TODO: select only those map points of the local group
+                    # filter out matches with distance (descriptor appearance) greater than threshold
+                    #matches = [m for m in matches if m.distance < distance_threshold]
+                    print("Found {} new matches".format(len(matches)))
+
+                    for m in matches:
+                        # m.queryIdx: index of projected map point
+                        # m.trainIdx: index of keypoint in current KF
+                        map_point_idx_local = m.queryIdx
+                        map_point_idx = map_points_local.idx[map_point_idx_local]  # transform idx from local to global map
+                        kp_idx = m.trainIdx
+
+                        # store descriptor for later merging
+                        descriptors[map_point_idx].append(des[kp_idx])
+
+                        # update observing keyframes and associated keypoint indices
+                        map_points.observations[map_point_idx][node_id] = kp_idx
+
+                # update representative ORB descriptor of each map points
+                for map_point_idx, des in descriptors.items():
+                    if len(des) < 2:
+                        continue
+                    map_points.representative_orb[map_point_idx, :] = get_representative_orb(des)
+
+
+                print(Counter(sorted([len([v for v in ob.values() if v is not None]) for ob in map_points.observations])))
+                print(Counter(sorted([len(ob) for ob in map_points.observations])))
 
 
 
