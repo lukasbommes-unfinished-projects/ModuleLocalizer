@@ -67,10 +67,11 @@ class MapPoints:
         result_idx = np.array([i for i, mp in enumerate(self.observing_keyframes) if keyframe_idx in mp])
         idx = self.idx[result_idx]
         pts_3d = self.pts_3d[result_idx, :]
+        representative_orb = self.representative_orb[result_idx, :]
         # get indices of keypoints associated to the map point in the query keyframe
         pos_idx = [mp.index(keyframe_idx) for mp in self.observing_keyframes if keyframe_idx in mp]
         associated_kp_indices = [self.associated_kp_indices[r][p] for r, p in zip(result_idx, pos_idx)]
-        return idx, pts_3d, associated_kp_indices
+        return idx, pts_3d, associated_kp_indices, representative_orb
 
     #def update(self, keyframe_idx, new_pts_3d):
     #    """Update the map points of a keyframe. Needed e.g. for bundle adjustment."""

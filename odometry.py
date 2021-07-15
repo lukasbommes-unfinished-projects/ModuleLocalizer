@@ -72,6 +72,7 @@ if __name__ == "__main__":
                 the camera poses and 3D points.
         """
         pose_graph = nx.Graph()  # stores keyframe poses and data (keypoints, ORB descriptors, etc.)
+                                 # edges stores neighbor relationships between keyframes
         map_points = MapPoints()  # stores 3D world points
 
         # get first key frame
@@ -102,8 +103,6 @@ if __name__ == "__main__":
                 pose_graph.add_node(1, frame=frame, frame_name=frame_name, kp=kp, des=des)
                 break
 
-        pose_graph.add_edge(0, 1, num_matches=len(matches))
-
         # compute relative camera pose for second frame
         R, t, mask = estimate_camera_pose(last_pts, current_pts, camera_matrix, min_inliers=20)
 
@@ -111,6 +110,8 @@ if __name__ == "__main__":
         last_pts = last_pts[:, mask, :]
         current_pts = current_pts[:, mask, :]
         matches = list(np.array(matches)[mask])
+
+        pose_graph.add_edge(0, 1, num_matches=len(matches))
 
         # relative camera pose
         R1 = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]).astype(np.float64)
@@ -158,7 +159,7 @@ if __name__ == "__main__":
         to the returned 3D points.
         """
         # get all map points observed in last KF
-        _, pts_3d, associated_kp_indices = map_points.get_by_observation(last_kf_index)  # get all map points observed by last KF
+        _, pts_3d, associated_kp_indices, _ = map_points.get_by_observation(last_kf_index)  # get all map points observed by last KF
         # get indices of map points which were found again in the current frame
         kp_idxs = []
         new_matches = []
@@ -211,8 +212,6 @@ if __name__ == "__main__":
 
             print("frame", frame_idx)
 
-    ### local tracking (initial pose estimate)
-
             # get initial pose estimate by matching keypoints with previous KF
             current_kp, current_des = extract_keypoints(frame, fast, orb)
             prev_node_id = sorted(pose_graph.nodes)[-1]
@@ -229,7 +228,30 @@ if __name__ == "__main__":
             median_dist = np.median(np.linalg.norm(last_pts.reshape(-1, 2)-current_pts.reshape(-1, 2), axis=1))
             print(median_dist)
 
-            # insert a new key frame
+            ###################################################################
+            #
+            # Insert new keyframe
+            #
+            #   Once the median distance of matched keypoints between the
+            #   current frame and last key frame exceeds a threshold, the
+            #   current frame is inserted as a new key frame. Its pose relative
+            #   to the previous frame is computed by decomposing the essential
+            #   matrix computed from the matched points. This is a pose
+            #   estimation from 2D-2D point correspondences and as such does
+            #   not suffer from inaccuricies in the triangulated map points.
+            #   Map points are triangulated between the new key frame and the
+            #   last key frame.
+            #   As the scale of the translation is only known up to a constant
+            #   factor, we compute the scale ratio from as quotient of Euclidean
+            #   distance between corresponding pairs of map points in the last
+            #   and current key frame. For robustness, we sample many pairs and
+            #   use the median of estimated scale ratios.
+            #   Once the actual scale is known, the camera pose is updated and
+            #   map points are triangulated again. Camera pose and map points
+            #   are then inserted in the pose graph and map points object.
+            #
+            ###################################################################
+
             if median_dist >= 100.0:
                 print("########## insert new KF ###########")
 
@@ -301,6 +323,37 @@ if __name__ == "__main__":
                     observing_kfs=[prev_node_id, prev_node_id+1])
                 print("pts_3d.mean: ", np.median(pts_3d, axis=0))
 
+                ###################################################################
+                #
+                # Find neighboring keyframes
+                #
+                ###################################################################
+
+                # add edges between the newest keyframe and other keyframes
+                # sharing enough map points
+                min_shared_points = 40  # if too low, then outliers will be projected also
+
+                newest_node_id = sorted(pose_graph.nodes)[-1]
+                _, newest_map_points, _, _ = map_points.get_by_observation(newest_node_id)
+                print(type(newest_map_points), type(pts_3d), newest_map_points.shape, pts_3d.shape)
+
+                for node_id in sorted(pose_graph.nodes):
+                    if (node_id >= newest_node_id-1):  # skip self and previous keyframe
+                        continue
+
+                    # project newest map points into each key frame
+                    R, t = from_twist(pose_graph.nodes[node_id]["pose"])
+                    projected_pts, _ = cv2.projectPoints(
+                        newest_map_points, R.T, -R.T.dot(t), camera_matrix, None)
+
+                    # filter out those which do not lie within the frame bounds
+                    projected_pts, _ = get_visible_points(projected_pts,
+                        frame_width=frame.shape[1], frame_height=frame.shape[0])
+
+                    # if enough map points are visible insert edge into pose graph
+                    if len(projected_pts) > min_shared_points:
+                        print("Key frame {} shares {} map points with key frame {}".format(newest_node_id, len(projected_pts), node_id))
+                        pose_graph.add_edge(newest_node_id, node_id, num_matches=len(projected_pts))
 
                 ###################################################################
                 #
@@ -321,12 +374,10 @@ if __name__ == "__main__":
                 for node_id in sorted(pose_graph.nodes):
                     # project map points into each key frame
                     R, t = from_twist(pose_graph.nodes[node_id]["pose"])
-                    t = -R.T.dot(t)
-                    R = R.T
                     projected_pts, _ = cv2.projectPoints(map_points.pts_3d,
-                        R, t, camera_matrix, None)
+                        R.T, -R.T.dot(t), camera_matrix, None)
                     # filter out those which do not lie within the frame bounds
-                    #projected_pts = get_visible_points(projected_pts,
+                    #projected_pts, _ = get_visible_points(projected_pts,
                     #    frame_width=frame.shape[1], frame_height=frame.shape[0])
 
                     # visualize projected map points
@@ -334,13 +385,13 @@ if __name__ == "__main__":
                         for pts in projected_pts:
                             match_frame = cv2.circle(match_frame, (int(pts[0, 0]), int(pts[0, 1])), 4, (0, 0, 255))
 
-                #     pickle.dump(projected_pts, open("projected_pts_{}.pkl".format(node_id), "wb"))
-                #
-                # pose_graph_ = pose_graph.copy()
-                # for node in pose_graph_.nodes:
-                #     pose_graph_.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph_.nodes[node]["kp"])
-                # pickle.dump(pose_graph_, open("pose_graph_.pkl", "wb"))
-                # pickle.dump(map_points, open("map_points_.pkl", "wb"))
+                    #pickle.dump(projected_pts, open("projected_pts_{}.pkl".format(node_id), "wb"))
+
+                pose_graph_ = pose_graph.copy()
+                for node in pose_graph_.nodes:
+                    pose_graph_.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph_.nodes[node]["kp"])
+                pickle.dump(pose_graph_, open("pose_graph_.pkl", "wb"))
+                pickle.dump(map_points, open("map_points_.pkl", "wb"))
 
                     # for each projected point visible in KF[node_id]
                     # search for matches with keypointsin local neighborhod of projected point

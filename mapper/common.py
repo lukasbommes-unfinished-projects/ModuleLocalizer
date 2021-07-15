@@ -83,7 +83,7 @@ def get_visible_points(pts, frame_width, frame_height):
     max_bb = np.array([frame_width, frame_height])
     visible = np.all(np.logical_and(
         min_bb <= pts.reshape(-1, 2), pts.reshape(-1, 2) <= max_bb), axis=1)
-    return pts[visible]
+    return pts[visible], visible
 
 
 def update_matched_flag(pose_graph, matches):
