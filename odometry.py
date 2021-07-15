@@ -134,13 +134,12 @@ if __name__ == "__main__":
         #pts_3d = remove_outliers(pts_3d)
 
         # add triangulated points to map points
-        associated_kp_indices = [[m.queryIdx, m.trainIdx] for m in matches]
-        representative_orb = [des[m.trainIdx, :] for m in matches]
         map_points.insert(
             pts_3d,
-            associated_kp_indices,
-            representative_orb,
-            observing_kfs=[0, 1])  # triangulatedmap points between KF0 and KF1
+            associated_kp_indices=[[m.queryIdx, m.trainIdx] for m in matches],
+            representative_orb=[des[m.trainIdx, :] for m in matches],
+            observing_kfs=[[0, 1] for _ in matches]
+        )
 
         print("Initialization successful. Chose frames 0 and {} as key frames".format(frame_idx_init))
 
@@ -314,13 +313,12 @@ if __name__ == "__main__":
                 update_matched_flag(pose_graph, matches)
 
                 # add new map points
-                associated_kp_indices = [[m.queryIdx, m.trainIdx] for m in matches]
-                representative_orb = [current_des[m.trainIdx, :] for m in matches]
                 map_points.insert(
                     pts_3d,
-                    associated_kp_indices,
-                    representative_orb,
-                    observing_kfs=[prev_node_id, prev_node_id+1])
+                    associated_kp_indices=[[m.queryIdx, m.trainIdx] for m in matches],
+                    representative_orb=[current_des[m.trainIdx, :] for m in matches],
+                    observing_kfs=[[prev_node_id, prev_node_id+1] for _ in matches]
+                )
                 print("pts_3d.mean: ", np.median(pts_3d, axis=0))
 
                 ###################################################################
@@ -335,7 +333,6 @@ if __name__ == "__main__":
 
                 newest_node_id = sorted(pose_graph.nodes)[-1]
                 _, newest_map_points, _, _ = map_points.get_by_observation(newest_node_id)
-                print(type(newest_map_points), type(pts_3d), newest_map_points.shape, pts_3d.shape)
 
                 for node_id in sorted(pose_graph.nodes):
                     if (node_id >= newest_node_id-1):  # skip self and previous keyframe

@@ -38,8 +38,9 @@ class MapPoints:
         self.idx = None
         self.pts_3d = np.empty(shape=(0, 3), dtype=np.float64)
         self.representative_orb = np.empty(shape=(0, 32), dtype=np.uint8)
-        self.observing_keyframes = []
-        self.associated_kp_indices = []
+        #self.observing_keyframes = []
+        #self.associated_kp_indices = []
+        self.observations = []
 
     def insert(self, new_map_points, associated_kp_indices,
             representative_orb, observing_kfs):
@@ -51,11 +52,14 @@ class MapPoints:
         else:
             self.idx = np.arange(0, new_map_points.shape[0])
         self.pts_3d = np.vstack((self.pts_3d, new_map_points))
-        for _ in range(new_map_points.shape[0]):
-            self.observing_keyframes.append(copy.copy(observing_kfs))
-        self.associated_kp_indices.extend(associated_kp_indices)
         self.representative_orb = np.vstack(
             (self.representative_orb, representative_orb))
+        #for _ in range(new_map_points.shape[0]):
+        #    self.observing_keyframes.append(copy.copy(observing_kfs))
+        #self.associated_kp_indices.extend(associated_kp_indices)
+        for keyframe_idxs, kp_idxs in zip(observing_kfs, associated_kp_indices):
+            self.observations.append({keyframe_idx: kp_idx
+            for keyframe_idx, kp_idx in zip(keyframe_idxs, kp_idxs)})
 
     # def update_observing_keyframes(new_kfs, new_associated_kp_indices):
 
@@ -64,14 +68,25 @@ class MapPoints:
     def get_by_observation(self, keyframe_idx):
         """Get all map points observed by a keyframe."""
         # get indices of all map points which are observed by the query keyframe
-        result_idx = np.array([i for i, mp in enumerate(self.observing_keyframes) if keyframe_idx in mp])
+        result_idx = np.array([
+            i for i, ob in enumerate(self.observations) if keyframe_idx in ob])
         idx = self.idx[result_idx]
         pts_3d = self.pts_3d[result_idx, :]
         representative_orb = self.representative_orb[result_idx, :]
         # get indices of keypoints associated to the map point in the query keyframe
-        pos_idx = [mp.index(keyframe_idx) for mp in self.observing_keyframes if keyframe_idx in mp]
-        associated_kp_indices = [self.associated_kp_indices[r][p] for r, p in zip(result_idx, pos_idx)]
+        associated_kp_indices = [
+            ob[keyframe_idx] for ob in self.observations if keyframe_idx in ob]
         return idx, pts_3d, associated_kp_indices, representative_orb
+
+        # # get indices of all map points which are observed by the query keyframe
+        # result_idx = np.array([i for i, mp in enumerate(self.observing_keyframes) if keyframe_idx in mp])
+        # idx = self.idx[result_idx]
+        # pts_3d = self.pts_3d[result_idx, :]
+        # representative_orb = self.representative_orb[result_idx, :]
+        # # get indices of keypoints associated to the map point in the query keyframe
+        # pos_idx = [mp.index(keyframe_idx) for mp in self.observing_keyframes if keyframe_idx in mp]
+        # associated_kp_indices = [self.associated_kp_indices[r][p] for r, p in zip(result_idx, pos_idx)]
+        # return idx, pts_3d, associated_kp_indices, representative_orb
 
     #def update(self, keyframe_idx, new_pts_3d):
     #    """Update the map points of a keyframe. Needed e.g. for bundle adjustment."""
