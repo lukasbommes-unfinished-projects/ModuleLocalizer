@@ -338,6 +338,14 @@ if __name__ == "__main__":
                 #
                 # Find neighboring keyframes
                 #
+                #   Project the most recently added map points into all key
+                #   frames in the pose graph. For each map point determine in
+                #   which key frame(s) it is visible and add an entry into the
+                #   observation dict of the map point (setting its key point
+                #   index to None as no keypoint is matched yet). If two key
+                #   frames share more than `min_shared_points` add an edge
+                #   between them in the pose graph.
+                #
                 ###################################################################
 
                 # add edges between the newest keyframe and other keyframes
@@ -376,6 +384,17 @@ if __name__ == "__main__":
                 ###################################################################
                 #
                 # Data association
+                #
+                #   For last keayframe
+                #   1) Obtain a local map, i.e. all map points visible in the
+                #      last keyframe and its neighbouring keyframes
+                #   2) project map point into each keyframe
+                #   3) search in a local region around the projected point for
+                #      ORB descriptors (using the representative ORB descriptor
+                #      of the map point)
+                #   4) If a match is found, add the corresponding keyframe to
+                #      the observation dict of that map point
+                #   5) Update the representative ORB descriptor of that map point
                 #
                 ###################################################################
 
@@ -469,55 +488,9 @@ if __name__ == "__main__":
                         continue
                     map_points.representative_orb[map_point_idx, :] = get_representative_orb(des)
 
-
+                # print
                 print(Counter(sorted([len([v for v in ob.values() if v is not None]) for ob in map_points.observations])))
                 print(Counter(sorted([len(ob) for ob in map_points.observations])))
-
-
-
-                # TODO:
-                # For each map point
-                # 1) project map point into each keyframe
-                # 2) ignore keyframes in which the projection is out of the frame bounds
-                # 3) search in a local region around the projected point for still
-                #    unmatched ORB descriptors (using the representative ORB
-                #    descriptor of the map point)
-                # 4) If a match is found, add the corresponding keyframe to the list of observing keyframes for that map point
-                # 5) Update the representative ORB descriptor of that map point
-
-                # for node_id in sorted(pose_graph.nodes):
-                #     # project map points into each key frame
-                #     R, t = from_twist(pose_graph.nodes[node_id]["pose"])
-                #     projected_pts, _ = cv2.projectPoints(map_points.pts_3d,
-                #         R.T, -R.T.dot(t), camera_matrix, None)
-                #     # filter out those which do not lie within the frame bounds
-                #     #projected_pts, _ = get_visible_points(projected_pts,
-                #     #    frame_width=frame.shape[1], frame_height=frame.shape[0])
-                #
-                #     # visualize projected map points
-                #     if node_id == prev_node_id:
-                #         for pts in projected_pts:
-                #             match_frame = cv2.circle(match_frame, (int(pts[0, 0]), int(pts[0, 1])), 4, (0, 0, 255))
-                #
-                #     #pickle.dump(projected_pts, open("projected_pts_{}.pkl".format(node_id), "wb"))
-                #
-                # pose_graph_ = pose_graph.copy()
-                # for node in pose_graph_.nodes:
-                #     pose_graph_.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph_.nodes[node]["kp"])
-                # pickle.dump(pose_graph_, open("pose_graph_.pkl", "wb"))
-                # pickle.dump(map_points, open("map_points_.pkl", "wb"))
-
-                    # for each projected point visible in KF[node_id]
-                    # search for matches with keypointsin local neighborhod of projected point
-                    # if match could be found update the visible KF and associated kp indices of the corresponding map point
-
-                    # for each projected map point retrieve keypoints in current frame which are in the local neighborhood of the projected point
-
-
-
-                    # search neighborhood of each projected point for unmatched ORB
-                    # descriptor that is similar to the representative descriptor
-                    # of the map point
 
 
                 # ###################################################################
