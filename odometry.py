@@ -125,6 +125,7 @@ if __name__ == "__main__":
         pose_graph.nodes[1]["pose"] = to_twist(R2, t2)
 
         # update boolean flags indicating which of the keypoints where matched
+        # NOT NEEDED
         update_matched_flag(pose_graph, matches)
 
         # triangulate initial 3D point cloud
@@ -310,6 +311,7 @@ if __name__ == "__main__":
                 pose_graph.add_edge(prev_node_id, prev_node_id+1, num_matches=len(matches))
 
                 # update boolean flags indicating which of the keypoints where matched
+                # NOT NEEDED
                 update_matched_flag(pose_graph, matches)
 
                 # add new map points
@@ -332,10 +334,11 @@ if __name__ == "__main__":
                 min_shared_points = 40  # if too low, then outliers will be projected also
 
                 newest_node_id = sorted(pose_graph.nodes)[-1]
-                _, newest_map_points, _, _ = map_points.get_by_observation(newest_node_id)
+                newest_map_points_idxs, newest_map_points, _, _ = \
+                    map_points.get_by_observation( newest_node_id)
 
                 for node_id in sorted(pose_graph.nodes):
-                    if (node_id >= newest_node_id-1):  # skip self and previous keyframe
+                    if (node_id >= newest_node_id-1):  # skip this and previous keyframe
                         continue
 
                     # project newest map points into each key frame
@@ -344,13 +347,20 @@ if __name__ == "__main__":
                         newest_map_points, R.T, -R.T.dot(t), camera_matrix, None)
 
                     # filter out those which do not lie within the frame bounds
-                    projected_pts, _ = get_visible_points(projected_pts,
+                    projected_pts, mask = get_visible_points(projected_pts,
                         frame_width=frame.shape[1], frame_height=frame.shape[0])
 
-                    # if enough map points are visible insert edge into pose graph
+                    # insert this key frame (node_id) into map point
+                    # observations of all visible map points
+                    for idx, m in zip(newest_map_points_idxs, mask):
+                        if m:
+                            map_points.observations[idx][node_id] = None
+
+                    # if enough map points are visible insert edge in pose graph
                     if len(projected_pts) > min_shared_points:
                         print("Key frame {} shares {} map points with key frame {}".format(newest_node_id, len(projected_pts), node_id))
-                        pose_graph.add_edge(newest_node_id, node_id, num_matches=len(projected_pts))
+                        pose_graph.add_edge(
+                            newest_node_id, node_id, num_matches=len(projected_pts))
 
                 ###################################################################
                 #

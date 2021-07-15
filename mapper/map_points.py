@@ -90,3 +90,23 @@ class MapPoints:
 
     #def update(self, keyframe_idx, new_pts_3d):
     #    """Update the map points of a keyframe. Needed e.g. for bundle adjustment."""
+
+
+def get_representative_orb(descriptors):
+    """Returns a representative ORB descriptor in a list of descriptors.
+
+    Args:
+        descriptors (`list` of `numpy.ndarray`): Each list item is an ORB
+            descriptor of dtype uint8 and shape (32,).
+
+    Returns:
+        representative_orb (`numpy.ndarray`): The representative ORB descriptor
+        which is the one with smallest Hamming distance to all other descriptors
+        in the provided list.
+    """
+    descriptors = np.vstack(descriptors)
+    dist = pdist(descriptors, metric="hamming")
+    dist = squareform(dist)
+    rep_idx = np.argmin(np.sum(dist, axis=0))
+    representative_orb = descriptors[rep_idx, :]
+    return representative_orb
