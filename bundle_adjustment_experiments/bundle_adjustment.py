@@ -1,3 +1,4 @@
+import os
 import pickle
 import copy
 import numpy as np
@@ -9,6 +10,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import sys
 sys.path.append("..")
 from mapper.geometry import from_twist, to_twist
+from mapper.modules import triangulate_modules
 
 np.random.seed(0)
 
@@ -41,6 +43,8 @@ neighbors_keyframes = [node_id for _, node_id in sorted(
 print("Neighboring keyframes: {}".format(neighbors_keyframes))
 nodes = [*neighbors_keyframes, newest_node_id]
 
+#nodes = list(sorted(pose_graph.nodes))
+
 ## setup optimizer and camera parameters
 robust_kernel = True
 optimizer = g2o.SparseOptimizer()
@@ -64,17 +68,19 @@ for node_id in nodes:
 # add current keyframe poses
 true_poses = []
 for i, node_id in enumerate(nodes):
-#for i, node_id in enumerate(pose_graph.nodes):
     print("Using keyframe {} for local BA".format(node_id))
     R, t = from_twist(pose_graph.nodes[node_id]["pose"])
+    t = -R.T.dot(t)
+    R = R.T
     pose = g2o.SE3Quat(R, np.squeeze(t))
     true_poses.append(pose)
 
     v_se3 = g2o.VertexSE3Expmap()
     v_se3.set_id(node_id)
     v_se3.set_estimate(pose)
-    #if node_id in [0, 1, 2, 3, 4, 5]:
-    #    v_se3.set_fixed(True)
+    #if node_id == 0 or node_id == 1:
+    if i < 2:
+        v_se3.set_fixed(True)
     optimizer.add_vertex(v_se3)
 
 # add map points
@@ -109,7 +115,7 @@ for i, (point, observation) in enumerate(zip(map_points.pts_3d, map_points.obser
         edge.set_measurement(measurement)   # needs to be set to the keypoint pixel position corresponding to that map point in that key frame (pose)
         edge.set_information(np.identity(2))
         if robust_kernel:
-            edge.set_robust_kernel(g2o.RobustKernelHuber(200))
+            edge.set_robust_kernel(g2o.RobustKernelHuber(1.96*np.std(map_points.pts_3d)))  # 95 % confidence interval of entire map, TODO: compute only from local map
             #edge.set_robust_kernel(g2o.RobustKernelHuber(np.sqrt(5.991)))  # 5.991: 95% CI
 
         edge.set_parameter_id(0, 0)
@@ -124,7 +130,7 @@ print('num edges:', len(optimizer.edges()))
 print('Performing full BA:')
 optimizer.initialize_optimization()
 optimizer.set_verbose(True)
-optimizer.optimize(100)
+optimizer.optimize(200)
 
 # read out optimized poses
 print("Poses after optimization")
@@ -134,8 +140,10 @@ for node_id in nodes:
     se3quat = vp.estimate()
     R = np.copy(se3quat.to_homogeneous_matrix()[0:3, 0:3])
     t = np.copy(se3quat.to_homogeneous_matrix()[0:3, 3])
+    t = -R.T.dot(t)
+    R = R.T
     print(R, t)
-    pose_graph.nodes[node_id]["pose"] = to_twist(R, -t)
+    pose_graph.nodes[node_id]["pose"] = to_twist(R, t)  # why is that minus needed???
 
 # read out optimized map points
 for point_id, i in inliers.items():
@@ -163,6 +171,16 @@ sys.path.append('/home/pangolin/build/src') # for inside docker container
 import pypangolin as pango
 from OpenGL.GL import *
 from pytransform3d.rotations import axis_angle_from_matrix
+
+
+module_corners = {}
+module_centers = {}
+try:
+    patches_meta_dir = os.path.join("..", "data_processing", "patches", "meta")
+    tracks_file = os.path.join("..", "data_processing", "tracking", "tracks_cluster_000000.csv")
+    module_corners, module_centers = triangulate_modules(tracks_file, patches_meta_dir, pose_graph, camera_matrix)
+except FileNotFoundError:
+    pass
 
 
 def draw_camera_poses(poses, cam_scale, cam_aspect, color=(1.0, 0.6667, 0.0)):
@@ -254,8 +272,8 @@ def plot():
         glMatrixMode(GL_MODELVIEW)
 
         # draw map points
-        #draw_map_points(map_points_bak.pts_3d, color=(0.5, 0.5, 0.5), size=4)
-        draw_map_points(map_points.pts_3d, color=(1.0, 0.0, 0.0), size=4)
+        draw_map_points(map_points_bak.pts_3d, color=(0.5, 0.5, 0.5), size=4)
+        draw_map_points(map_points.pts_3d, color=(0.0, 0.0, 1.0), size=4)
 
         # draw origin coordinate system (red: x, green: y, blue: z)
         glBegin(GL_LINES)
@@ -278,6 +296,29 @@ def plot():
 
         poses = [pose_graph.nodes[n]["pose"] for n in pose_graph]
         draw_camera_poses(poses, cam_scale, cam_aspect, color=(0.0, 0.6667, 1.0))
+
+        # draw PV modules + corners
+        for track_id, points in module_corners.items():
+            glPointSize(10)
+            glBegin(GL_POINTS)
+            glColor3f(1.0, 0.0, 0.0)
+            for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
+                glVertex3f(p_x, p_y, p_z)
+            glEnd()
+
+            glBegin(GL_LINE_LOOP)
+            for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
+                glVertex3f(p_x, p_y, p_z)
+            glEnd()
+
+        # draw PV module centers
+        for track_id, points in module_centers.items():
+            glPointSize(10)
+            glBegin(GL_POINTS)
+            glColor3f(0.0, 1.0, 0.0)
+            for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
+                glVertex3f(p_x, p_y, p_z)
+            glEnd()
 
         pango.FinishFrame()
 

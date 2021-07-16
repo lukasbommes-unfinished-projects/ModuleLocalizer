@@ -499,6 +499,8 @@ if __name__ == "__main__":
                 #
                 ###################################################################
 
+                #if len(pose_graph.nodes) == 3:  # perform BA only once for testing
+
                 print("########## performing local bundle adjusment ###########")
 
                 newest_node_id = list(sorted(pose_graph.nodes))[-1]
@@ -511,7 +513,7 @@ if __name__ == "__main__":
 
                 nodes = [*neighbors_keyframes, newest_node_id]
 
-                #if len(pose_graph.nodes) > 2:
+                #nodes = list(sorted(pose_graph.nodes))
 
                 # setup optimizer and camera parameters
                 robust_kernel = True
@@ -532,6 +534,8 @@ if __name__ == "__main__":
                 for i, node_id in enumerate(sorted(nodes)):
                     print("Using keyframe {} for local BA".format(node_id))
                     R, t = from_twist(pose_graph.nodes[node_id]["pose"])
+                    t = -R.T.dot(t)
+                    R = R.T
                     pose = g2o.SE3Quat(R, np.squeeze(t))
                     true_poses.append(pose)
 
@@ -539,7 +543,7 @@ if __name__ == "__main__":
                     v_se3.set_id(node_id)
                     v_se3.set_estimate(pose)
                     if i < 2:
-                    #if i == 0:
+                    #if node_id == 0 or node_id == 1:
                         v_se3.set_fixed(True)
                     optimizer.add_vertex(v_se3)
 
@@ -579,8 +583,7 @@ if __name__ == "__main__":
                         edge.set_measurement(measurement)   # needs to be set to the keypoint pixel position corresponding to that map point in that key frame (pose)
                         edge.set_information(np.identity(2))
                         if robust_kernel:
-                            #edge.set_robust_kernel(g2o.RobustKernelHuber())
-                            edge.set_robust_kernel(g2o.RobustKernelHuber(np.sqrt(5.991)))  # 95% CI
+                            edge.set_robust_kernel(g2o.RobustKernelHuber(1.96*np.std(map_points.pts_3d)))
 
                         edge.set_parameter_id(0, 0)
                         optimizer.add_edge(edge)
@@ -594,7 +597,7 @@ if __name__ == "__main__":
                 print('Performing full BA:')
                 optimizer.initialize_optimization()
                 optimizer.set_verbose(True)
-                optimizer.optimize(10)
+                optimizer.optimize(200)
 
                 # # read out optimized poses
                 for node_id in nodes:
@@ -603,6 +606,8 @@ if __name__ == "__main__":
                     se3quat = vp.estimate()
                     R = np.copy(se3quat.to_homogeneous_matrix()[0:3, 0:3])
                     t = np.copy(se3quat.to_homogeneous_matrix()[0:3, 3])
+                    t = -R.T.dot(t)
+                    R = R.T
                     pose_graph.nodes[node_id]["pose"] = to_twist(R, t)
 
                 # read out optimized map points
