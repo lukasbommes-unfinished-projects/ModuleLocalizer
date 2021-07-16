@@ -134,13 +134,13 @@ except FileNotFoundError:
     module_corners = {}
     module_centers = {}
 
-COLORS = [(0, 0, 1),
-          (0, 1, 0),
-          (0, 1, 1),
-          (1, 0, 0),
-          (1, 0, 1),
-          (1, 1, 0),
-          (1, 1, 1)]
+# COLORS = [(0, 0, 1),
+#           (0, 1, 0),
+#           (0, 1, 1),
+#           (1, 0, 0),
+#           (1, 0, 1),
+#           (1, 1, 0),
+#           (1, 1, 1)]
 
 # print only every x map points
 subsmaple_map_points = 1
