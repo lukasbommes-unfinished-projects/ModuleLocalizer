@@ -11,6 +11,7 @@ import g2o
 from scipy.spatial import KDTree
 
 from mapper.map_points import MapPoints, get_representative_orb
+from mapper.pose_graph import get_neighbors
 from mapper.common import Capture, get_visible_points, update_matched_flag
 from mapper.keypoints import extract_keypoints, match
 from mapper.geometry import from_twist, to_twist, estimate_camera_pose, \
@@ -50,12 +51,6 @@ if __name__ == "__main__":
         for node in pose_graph.nodes:
             pose_graph.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph.nodes[node]["kp"])
         pickle.dump(pose_graph, open(os.path.join(path, "pose_graph.pkl"), "wb"))
-        #kf_poses = [data["pose"] for _, data in pose_graph.nodes.data()]
-        # pickle.dump(kf_poses, open(os.path.join(path, "kf_poses.pkl"), "wb"))
-        # kf_frames = [data["frame"] for _, data in pose_graph.nodes.data()]
-        # pickle.dump(kf_frames, open(os.path.join(path, "kf_frames.pkl"), "wb"))
-        # kf_frame_names = [data["frame_name"] for _, data in pose_graph.nodes.data()]
-        # pickle.dump(kf_frame_names, open(os.path.join(path, "kf_frame_names.pkl"), "wb"))
 
 
     cv2.namedWindow("match_frame", cv2.WINDOW_NORMAL)
@@ -216,9 +211,7 @@ if __name__ == "__main__":
             frame, frame_name = get_frame(cap)
             if frame is None:
                 break
-
             frame_idx += 1
-
             print("frame", frame_idx)
 
             # get initial pose estimate by matching keypoints with previous KF
@@ -230,8 +223,6 @@ if __name__ == "__main__":
                 pose_graph.nodes[prev_node_id]["des"],
                 current_des, pose_graph.nodes[prev_node_id]["kp"],
                 current_kp, match_max_distance, draw=True)
-
-            #vis_frame = cv2.drawKeypoints(np.copy(frame), current_kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
             # determine median distance between all matched feature points
             median_dist = np.median(np.linalg.norm(last_pts.reshape(-1, 2)-current_pts.reshape(-1, 2), axis=1))
@@ -404,8 +395,7 @@ if __name__ == "__main__":
                 print("Data association for keyframe {}".format(newest_node_id))
 
                 # get node_ids of neighboring keyframes
-                neighbors_keyframes = [node_id for _, node_id in sorted(
-                    pose_graph.edges(newest_node_id))]
+                neighbors_keyframes = get_neighbors(pose_graph, newest_node_id)
                 print("Neighboring keyframes: {}".format(neighbors_keyframes))
 
                 # obtain map points visible in the neighbouring key frames
@@ -499,21 +489,14 @@ if __name__ == "__main__":
                 #
                 ###################################################################
 
-                #if len(pose_graph.nodes) == 3:  # perform BA only once for testing
-
                 print("########## performing local bundle adjusment ###########")
 
                 newest_node_id = list(sorted(pose_graph.nodes))[-1]
-                print("Bundle adjustment for keyframe {}".format(newest_node_id))
-
-                # get node_ids of neighboring keyframes
-                neighbors_keyframes = [node_id for _, node_id in sorted(
-                    pose_graph.edges(newest_node_id))]
-                print("Neighboring keyframes: {}".format(neighbors_keyframes))
-
+                neighbors_keyframes = get_neighbors(pose_graph, newest_node_id)
                 nodes = [*neighbors_keyframes, newest_node_id]
 
-                #nodes = list(sorted(pose_graph.nodes))
+                print("Bundle adjustment for keyframe {}".format(newest_node_id))
+                print("Neighboring keyframes: {}".format(neighbors_keyframes))
 
                 # setup optimizer and camera parameters
                 robust_kernel = True
@@ -529,21 +512,15 @@ if __name__ == "__main__":
                 cam.set_id(0)
                 optimizer.add_parameter(cam)
 
-                # add current keyframe poses
-                true_poses = []
+                # add poses of current keyframe and its direct neighbors
                 for i, node_id in enumerate(sorted(nodes)):
-                    print("Using keyframe {} for local BA".format(node_id))
+                    print("Adding keyframe {} to local BA".format(node_id))
                     R, t = from_twist(pose_graph.nodes[node_id]["pose"])
-                    t = -R.T.dot(t)
-                    R = R.T
-                    pose = g2o.SE3Quat(R, np.squeeze(t))
-                    true_poses.append(pose)
-
+                    pose = g2o.SE3Quat(R.T, np.squeeze(-R.T.dot(t)))
                     v_se3 = g2o.VertexSE3Expmap()
                     v_se3.set_id(node_id)
                     v_se3.set_estimate(pose)
                     if i < 2:
-                    #if node_id == 0 or node_id == 1:
                         v_se3.set_fixed(True)
                     optimizer.add_vertex(v_se3)
 
@@ -606,9 +583,7 @@ if __name__ == "__main__":
                     se3quat = vp.estimate()
                     R = np.copy(se3quat.to_homogeneous_matrix()[0:3, 0:3])
                     t = np.copy(se3quat.to_homogeneous_matrix()[0:3, 3])
-                    t = -R.T.dot(t)
-                    R = R.T
-                    pose_graph.nodes[node_id]["pose"] = to_twist(R, t)
+                    pose_graph.nodes[node_id]["pose"] = to_twist(R.T, -R.T.dot(t))
 
                 # read out optimized map points
                 for point_id, i in inliers.items():
