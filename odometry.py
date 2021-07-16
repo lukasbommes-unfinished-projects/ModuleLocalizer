@@ -21,6 +21,9 @@ from mapper.bundle_adjustment import bundle_adjust
 # try out FLANN matcher with epipolar contraint to speed up ORB matching and reduce outliers
 # see: https://docs.opencv.org/4.5.2/da/de9/tutorial_py_epipolar_geometry.html
 
+# TODO: if system fails due to low number of matches, restart and use last known
+#       pose as initial pose
+
 
 if __name__ == "__main__":
     camera_matrix = pickle.load(open("camera_calibration/parameters/ir/camera_matrix.pkl", "rb"))
@@ -400,8 +403,6 @@ if __name__ == "__main__":
 
                 # obtain map points visible in the neighbouring key frames
                 map_points_local = copy.deepcopy(map_points)
-                print("Size of local map: {} - Size of global map: {}".format(
-                    len(map_points_local.idx), len(map_points.idx)))
                 delete_idxs = []
                 for map_point_idx, observation in reversed(
                     list(enumerate(map_points.observations))):
@@ -418,7 +419,8 @@ if __name__ == "__main__":
                     map_points_local.representative_orb = np.delete(
                         map_points_local.representative_orb, delete_idxs, axis=0)
 
-                print("Size of local map: {} - Size of global map: {}".format(len(map_points_local.idx), len(map_points.idx)))
+                print("Size of local map: {} - Size of global map: {}".format(
+                    len(map_points_local.idx), len(map_points.idx)))
 
 
                 descriptors = defaultdict(list)

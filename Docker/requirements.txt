@@ -2,7 +2,7 @@ opencv-python==4.2.0.32
 opencv-contrib-python==4.2.0.32
 scipy==1.5.2
 matplotlib==3.3.0
-pytransform3d==1.1.1
+pytransform3d==1.9.1
 jupyterlab==2.0.0
 networkx==2.4
 Pillow==7.2.0

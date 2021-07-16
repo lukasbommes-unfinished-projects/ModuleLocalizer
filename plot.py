@@ -3,6 +3,7 @@ sys.path.append('/home/lukas/Pangolin/build/src')
 sys.path.append('/home/pangolin/build/src') # for inside docker container
 
 import os
+import json
 import pickle
 import random
 import numpy as np
@@ -21,6 +22,12 @@ from mapper.modules import triangulate_modules
 camera_matrix = pickle.load(open("camera_calibration/parameters/ir/camera_matrix.pkl", "rb"))
 pose_graph = pickle.load(open("pose_graph.pkl", "rb"))
 map_points = pickle.load(open("map_points.pkl", "rb"))
+
+gps_file = "data_processing/splitted/gps/gps.json"
+gps = json.load(open(gps_file, "r"))
+keyframe_idxs =  [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in sorted(pose_graph.nodes)]
+gps_positions = np.array([gps[idx] for idx in keyframe_idxs])
+gps_positions = (gps_positions - gps_positions[0])*1e5
 
 #pose_graph = pickle.load(open("pose_graph_with_ba.pkl", "rb"))
 #map_points = pickle.load(open("map_points_with_ba.pkl", "rb"))
@@ -148,6 +155,15 @@ def plot():
 
         poses = [pose_graph.nodes[n]["pose"] for n in pose_graph]
         draw_camera_poses(poses, cam_scale, cam_aspect, color=(0.0, 0.6667, 1.0))
+
+        # draw gps track
+        glLineWidth(3.0)
+        glBegin(GL_LINE_STRIP)
+        glColor3f(1.0, 0.0, 0.0)
+        for t in gps_positions:
+            glVertex3f(t[0], t[1], 0.0)
+        glEnd()
+        glLineWidth(1.0)
 
         # draw PV modules + corners
         for track_id, points in module_corners.items():
