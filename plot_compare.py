@@ -21,9 +21,7 @@ from mapper.modules import triangulate_modules
 camera_matrix = pickle.load(open("camera_calibration/parameters/ir/camera_matrix.pkl", "rb"))
 pose_graph = pickle.load(open("pose_graph.pkl", "rb"))
 map_points = pickle.load(open("map_points.pkl", "rb"))
-
-#pose_graph = pickle.load(open("pose_graph_with_ba.pkl", "rb"))
-#map_points = pickle.load(open("map_points_with_ba.pkl", "rb"))
+map_points = map_points.pts_3d
 
 try:
     patches_meta_dir = os.path.join("data_processing", "patches", "meta")
@@ -33,72 +31,18 @@ except FileNotFoundError:
     module_corners = {}
     module_centers = {}
 
+# COLORS = [(0, 0, 1),
+#           (0, 1, 0),
+#           (0, 1, 1),
+#           (1, 0, 0),
+#           (1, 0, 1),
+#           (1, 1, 0),
+#           (1, 1, 1)]
 
-def draw_camera_poses(poses, cam_scale, cam_aspect, color=(1.0, 0.6667, 0.0)):
-    for R, t in [from_twist(pose) for pose in poses]:
-        glPushMatrix()
-        glTranslatef(*t)
-        r = axis_angle_from_matrix(R) # returns x, y, z, angle
-        r[-1] = r[-1]*180.0/np.pi  # rad -> deg
-        glRotatef(r[3], r[0], r[1], r[2])  # angle, x, y, z
-        glBegin(GL_LINES)
-        glColor3f(1.0, 0, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(cam_scale, 0, 0)
+# print only every x map points
+subsmaple_map_points = 1
 
-        glColor3f(0, 1.0, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, cam_scale, 0)
-
-        glColor3f(0, 0, 1.0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, 0, cam_scale)
-        glEnd()
-
-        glBegin(GL_LINE_LOOP)
-        glColor3f(1.0, 1.0, 1.0)
-        glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glEnd()
-
-        glBegin(GL_LINES)
-        glColor3f(1.0, 1.0, 1.0)
-        glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glEnd()
-
-        glPopMatrix()
-
-    # connect camera poses with a line
-    glLineWidth(3.0)
-    glBegin(GL_LINE_STRIP)
-    glColor3f(*color)
-    for _, t in [from_twist(pose) for pose in poses]:
-        glVertex3f(t[0, 0], t[1, 0], t[2, 0])
-    glEnd()
-    glLineWidth(1.0)
-
-
-def draw_map_points(map_points, color=(0.5, 0.5, 0.5), size=2, subsample=1):
-    glPointSize(size)
-    glBegin(GL_POINTS)
-    glColor3f(*color)
-    for i, (p_x, p_y, p_z) in enumerate(zip(map_points[:, 0], map_points[:, 1], map_points[:, 2])):
-        if i % subsample != 0:
-            continue
-        glVertex3f(p_x, p_y, p_z)
-    glEnd()
-
-
-def plot():
+def main():
     win = pango.CreateWindowAndBind("pySimpleDisplay", 1600, 900)
     glEnable(GL_DEPTH_TEST)
 
@@ -118,14 +62,25 @@ def plot():
                                             -aspect).SetHandler(handler)
 
     while not pango.ShouldQuit():
+        #glClearColor(0.0, 0.5, 0.0, 1.0)
         glClearColor(0.0, 0.0, 0.0, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         d_cam.Activate(s_cam)
         glMatrixMode(GL_MODELVIEW)
 
-        # draw map points
-        #draw_map_points(map_points_bak.pts_3d, color=(0.5, 0.5, 0.5), size=4)
-        draw_map_points(map_points.pts_3d, color=(0.5, 0.5, 0.5), size=4)
+        # draw map points (old format)
+        glPointSize(2)
+        glBegin(GL_POINTS)
+        #for i, m in enumerate(map_points.pts_3d):
+        # get_random_color
+        #glColor3f(*COLORS[i%len(COLORS)])
+        glColor3f(0.5, 0.5, 0.5)
+        for i, (p_x, p_y, p_z) in enumerate(zip(map_points[:, 0], map_points[:, 1], map_points[:, 2])):
+            if i % subsmaple_map_points != 0:
+                continue
+            glVertex3f(p_x, p_y, p_z)
+        glEnd()
+
 
         # draw origin coordinate system (red: x, green: y, blue: z)
         glBegin(GL_LINES)
@@ -143,11 +98,57 @@ def plot():
         glEnd()
 
         # draw every camera pose as view frustrum
-        #poses = [pose_graph_bak.nodes[n]["pose"] for n in pose_graph_bak]
-        #draw_camera_poses(poses, cam_scale, cam_aspect, color=(1.0, 0.6667, 0.0))
+        for R, t in [from_twist(pose_graph.nodes[n]["pose"]) for n in pose_graph]:
+            glPushMatrix()
+            glTranslatef(*t)
+            r = axis_angle_from_matrix(R) # returns x, y, z, angle
+            r[-1] = r[-1]*180.0/np.pi  # rad -> deg
+            glRotatef(r[3], r[0], r[1], r[2])  # angle, x, y, z
+            glBegin(GL_LINES)
+            glColor3f(1.0, 0, 0)
+            glVertex3f(0, 0, 0)
+            glVertex3f(cam_scale, 0, 0)
 
-        poses = [pose_graph.nodes[n]["pose"] for n in pose_graph]
-        draw_camera_poses(poses, cam_scale, cam_aspect, color=(0.0, 0.6667, 1.0))
+            glColor3f(0, 1.0, 0)
+            glVertex3f(0, 0, 0)
+            glVertex3f(0, cam_scale, 0)
+
+            glColor3f(0, 0, 1.0)
+            glVertex3f(0, 0, 0)
+            glVertex3f(0, 0, cam_scale)
+            glEnd()
+
+            glBegin(GL_LINE_LOOP)
+            glColor3f(1.0, 1.0, 1.0)
+            glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glEnd()
+
+            glBegin(GL_LINES)
+            glColor3f(1.0, 1.0, 1.0)
+            glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glVertex3f(0, 0, 0)
+            glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glVertex3f(0, 0, 0)
+            glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glVertex3f(0, 0, 0)
+            glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+            glVertex3f(0, 0, 0)
+            glEnd()
+
+            glPopMatrix()
+
+        # connect camera poses with a line
+        glLineWidth(3.0)
+        glBegin(GL_LINE_STRIP)
+        glColor3f(1.0, 0.6667, 0.0)
+        for _, t in [from_twist(pose_graph.nodes[n]["pose"]) for n in pose_graph]:
+            glVertex3f(t[0, 0], t[1, 0], t[2, 0])
+        glEnd()
+        glLineWidth(1.0)
+
 
         # draw PV modules + corners
         for track_id, points in module_corners.items():
@@ -172,8 +173,15 @@ def plot():
                 glVertex3f(p_x, p_y, p_z)
             glEnd()
 
+
+        # TODO:
+        # draw lines between cameras
+        # visualize ground plane
+        # project images onto ground plane
+        # visualize local group
+
         pango.FinishFrame()
 
 
 if __name__ == "__main__":
-    plot()
+    main()

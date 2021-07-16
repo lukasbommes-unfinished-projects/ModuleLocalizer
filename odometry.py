@@ -7,7 +7,6 @@ from collections import defaultdict, Counter
 import numpy as np
 import cv2
 import networkx as nx
-import g2o
 from scipy.spatial import KDTree
 
 from mapper.map_points import MapPoints, get_representative_orb
@@ -16,6 +15,7 @@ from mapper.common import Capture, get_visible_points, update_matched_flag
 from mapper.keypoints import extract_keypoints, match
 from mapper.geometry import from_twist, to_twist, estimate_camera_pose, \
     triangulate_map_points
+from mapper.bundle_adjustment import bundle_adjust
 
 # TODO:
 # try out FLANN matcher with epipolar contraint to speed up ORB matching and reduce outliers
@@ -498,97 +498,8 @@ if __name__ == "__main__":
                 print("Bundle adjustment for keyframe {}".format(newest_node_id))
                 print("Neighboring keyframes: {}".format(neighbors_keyframes))
 
-                # setup optimizer and camera parameters
-                robust_kernel = True
-                optimizer = g2o.SparseOptimizer()
-                solver = g2o.BlockSolverSE3(g2o.LinearSolverCholmodSE3())
-                solver = g2o.OptimizationAlgorithmLevenberg(solver)
-                optimizer.set_algorithm(solver)
-
-                focal_length = (camera_matrix[0,0] + camera_matrix[1,1]) / 2
-                principal_point = (camera_matrix[0,2], camera_matrix[1,2])
-                print("focal_length: ", focal_length, "principal_point: ", principal_point)
-                cam = g2o.CameraParameters(focal_length, principal_point, 0)
-                cam.set_id(0)
-                optimizer.add_parameter(cam)
-
-                # add poses of current keyframe and its direct neighbors
-                for i, node_id in enumerate(sorted(nodes)):
-                    print("Adding keyframe {} to local BA".format(node_id))
-                    R, t = from_twist(pose_graph.nodes[node_id]["pose"])
-                    pose = g2o.SE3Quat(R.T, np.squeeze(-R.T.dot(t)))
-                    v_se3 = g2o.VertexSE3Expmap()
-                    v_se3.set_id(node_id)
-                    v_se3.set_estimate(pose)
-                    if i < 2:
-                        v_se3.set_fixed(True)
-                    optimizer.add_vertex(v_se3)
-
-                # add map points
-                point_id = len(pose_graph)
-                inliers = dict()
-                for i, (point, observation) in enumerate(
-                        zip(map_points.pts_3d, map_points.observations)):
-
-                    # skip points not visible in the selected subset of key frames
-                    if not any([node_id in nodes for node_id in observation.keys()]):
-                        continue
-
-                    vp = g2o.VertexSBAPointXYZ()
-                    vp.set_id(point_id)
-                    vp.set_marginalized(True)
-                    vp.set_estimate(point)
-                    optimizer.add_vertex(vp)
-
-                    # TODO:
-                    # 1) retrieve all key frames in which this map point is visible
-                    # 2) retrieve pixel coordinates of the keypoint corresponding to this map point in each key frame from 1)
-                    # 3) add an edge for each observation of the map point as below
-                    for node_id, kp_idx in observation.items():
-                        if node_id not in nodes:
-                            continue
-                        if kp_idx is None:
-                            continue
-                        kp = cv2.KeyPoint_convert(pose_graph.nodes[node_id]["kp"])
-                        #print("kp[kp_idx]", kp[kp_idx], kp[kp_idx].shape, kp[kp_idx].dtype, kp_idx, node_id)
-                        measurement = kp[kp_idx]
-                        #print(i, point_id, node_id, measurement)
-
-                        edge = g2o.EdgeProjectXYZ2UV()
-                        edge.set_vertex(0, vp)  # map point
-                        edge.set_vertex(1, optimizer.vertex(node_id))  # pose of observing keyframe
-                        edge.set_measurement(measurement)   # needs to be set to the keypoint pixel position corresponding to that map point in that key frame (pose)
-                        edge.set_information(np.identity(2))
-                        if robust_kernel:
-                            edge.set_robust_kernel(g2o.RobustKernelHuber(1.96*np.std(map_points.pts_3d)))
-
-                        edge.set_parameter_id(0, 0)
-                        optimizer.add_edge(edge)
-
-                    inliers[point_id] = i
-                    point_id += 1
-
-                print('num vertices:', len(optimizer.vertices()))
-                print('num edges:', len(optimizer.edges()))
-
-                print('Performing full BA:')
-                optimizer.initialize_optimization()
-                optimizer.set_verbose(True)
-                optimizer.optimize(200)
-
-                # # read out optimized poses
-                for node_id in nodes:
-                    print(node_id)
-                    vp = optimizer.vertex(node_id)
-                    se3quat = vp.estimate()
-                    R = np.copy(se3quat.to_homogeneous_matrix()[0:3, 0:3])
-                    t = np.copy(se3quat.to_homogeneous_matrix()[0:3, 3])
-                    pose_graph.nodes[node_id]["pose"] = to_twist(R.T, -R.T.dot(t))
-
-                # read out optimized map points
-                for point_id, i in inliers.items():
-                    vp = optimizer.vertex(point_id)
-                    map_points.pts_3d[i, :] = np.copy(vp.estimate())
+                # perform local bundle adjustment
+                bundle_adjust(pose_graph, map_points, nodes, camera_matrix)
 
 
             cv2.imshow("match_frame", match_frame)
