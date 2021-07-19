@@ -5,7 +5,8 @@ import numpy as np
 from mapper.geometry import from_twist, to_twist
 
 
-def bundle_adjust(pose_graph, map_points, nodes, camera_matrix, verbose=True):
+def bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
+    robust_kernel_value=None, verbose=True):
 
     # setup optimizer and camera parameters
     optimizer = g2o.SparseOptimizer()
@@ -70,8 +71,9 @@ def bundle_adjust(pose_graph, map_points, nodes, camera_matrix, verbose=True):
             edge.set_vertex(1, optimizer.vertex(node_id))  # pose of observing keyframe
             edge.set_measurement(measurement)   # keypoint pixel position corresponding to that map point in that key frame
             edge.set_information(np.identity(2))
-            edge.set_robust_kernel(g2o.RobustKernelHuber(
-                1.96*np.std(map_points.pts_3d)))  # 95 % confidence interval of entire map, TODO: compute only from local map
+            if robust_kernel_value:
+                edge.set_robust_kernel(g2o.RobustKernelHuber(
+                    robust_kernel_value))
 
             edge.set_parameter_id(0, 0)
             optimizer.add_edge(edge)

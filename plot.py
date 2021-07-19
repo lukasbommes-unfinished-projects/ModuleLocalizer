@@ -30,167 +30,198 @@ keyframe_idxs =  [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id i
 gps_positions = np.array(gps)  # plot entire available gps track
 gps_positions = (gps_positions - gps_positions[0])*1e5  # TODO: compute with sim3 solver (in odometry.py)
 
-#pose_graph = pickle.load(open("pose_graph_with_ba.pkl", "rb"))
-#map_points = pickle.load(open("map_points_with_ba.pkl", "rb"))
-
-try:
-    patches_meta_dir = os.path.join("data_processing", "patches", "meta")
-    tracks_file = os.path.join("data_processing", "tracking", "tracks_cluster_000000.csv")
-    module_corners, module_centers = triangulate_modules(tracks_file, patches_meta_dir, pose_graph, camera_matrix)
-except FileNotFoundError:
-    module_corners = {}
-    module_centers = {}
+# whether to visualize tracked PV modules
+plot_modules = True
+module_corners = {}
+module_centers = {}
+if plot_modules:
+	try:
+		patches_meta_dir = os.path.join("data_processing", "patches", "meta")
+		tracks_file = os.path.join("data_processing", "tracking", "tracks_cluster_000000.csv")
+		module_corners, module_centers = triangulate_modules(tracks_file, patches_meta_dir, pose_graph, camera_matrix)
+	except FileNotFoundError:
+		pass
 
 
 def draw_camera_poses(poses, cam_scale, cam_aspect, color=(1.0, 0.6667, 0.0)):
-    for R, t in [from_twist(pose) for pose in poses]:
-        glPushMatrix()
-        glTranslatef(*t)
-        r = axis_angle_from_matrix(R) # returns x, y, z, angle
-        r[-1] = r[-1]*180.0/np.pi  # rad -> deg
-        glRotatef(r[3], r[0], r[1], r[2])  # angle, x, y, z
-        glBegin(GL_LINES)
-        glColor3f(1.0, 0, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(cam_scale, 0, 0)
+	for R, t in [from_twist(pose) for pose in poses]:
+		glPushMatrix()
+		glTranslatef(*t)
+		r = axis_angle_from_matrix(R) # returns x, y, z, angle
+		r[-1] = r[-1]*180.0/np.pi  # rad -> deg
+		glRotatef(r[3], r[0], r[1], r[2])  # angle, x, y, z
+		glBegin(GL_LINES)
+		glColor3f(1.0, 0, 0)
+		glVertex3f(0, 0, 0)
+		glVertex3f(cam_scale, 0, 0)
 
-        glColor3f(0, 1.0, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, cam_scale, 0)
+		glColor3f(0, 1.0, 0)
+		glVertex3f(0, 0, 0)
+		glVertex3f(0, cam_scale, 0)
 
-        glColor3f(0, 0, 1.0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, 0, cam_scale)
-        glEnd()
+		glColor3f(0, 0, 1.0)
+		glVertex3f(0, 0, 0)
+		glVertex3f(0, 0, cam_scale)
+		glEnd()
 
-        glBegin(GL_LINE_LOOP)
-        glColor3f(1.0, 1.0, 1.0)
-        glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glEnd()
+		glBegin(GL_LINE_LOOP)
+		glColor3f(1.0, 1.0, 1.0)
+		glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glEnd()
 
-        glBegin(GL_LINES)
-        glColor3f(1.0, 1.0, 1.0)
-        glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
-        glVertex3f(0, 0, 0)
-        glEnd()
+		glBegin(GL_LINES)
+		glColor3f(1.0, 1.0, 1.0)
+		glVertex3f(-1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glVertex3f(0, 0, 0)
+		glVertex3f(1.0*cam_scale, -1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glVertex3f(0, 0, 0)
+		glVertex3f(1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glVertex3f(0, 0, 0)
+		glVertex3f(-1.0*cam_scale, 1.0*cam_scale/cam_aspect, 0.75*cam_scale)
+		glVertex3f(0, 0, 0)
+		glEnd()
 
-        glPopMatrix()
+		glPopMatrix()
 
-    # connect camera poses with a line
-    glLineWidth(3.0)
-    glBegin(GL_LINE_STRIP)
-    glColor3f(*color)
-    for _, t in [from_twist(pose) for pose in poses]:
-        glVertex3f(t[0, 0], t[1, 0], t[2, 0])
-    glEnd()
-    glLineWidth(1.0)
+	# connect camera poses with a line
+	glLineWidth(3.0)
+	glBegin(GL_LINE_STRIP)
+	glColor3f(*color)
+	for _, t in [from_twist(pose) for pose in poses]:
+		glVertex3f(t[0, 0], t[1, 0], t[2, 0])
+	glEnd()
+	glLineWidth(1.0)
 
 
 def draw_map_points(map_points, color=(0.5, 0.5, 0.5), size=2, subsample=1):
-    glPointSize(size)
-    glBegin(GL_POINTS)
-    glColor3f(*color)
-    for i, (p_x, p_y, p_z) in enumerate(zip(map_points[:, 0], map_points[:, 1], map_points[:, 2])):
-        if i % subsample != 0:
-            continue
-        glVertex3f(p_x, p_y, p_z)
-    glEnd()
+	glPointSize(size)
+	glBegin(GL_POINTS)
+	glColor3f(*color)
+	for i, (p_x, p_y, p_z) in enumerate(zip(map_points[:, 0], map_points[:, 1], map_points[:, 2])):
+		if i % subsample != 0:
+			continue
+		glVertex3f(p_x, p_y, p_z)
+	glEnd()
+
+
+def draw_gps_track(gps_positions):
+	glLineWidth(3.0)
+	glBegin(GL_LINE_STRIP)
+	glColor3f(1.0, 0.0, 0.0)
+	for t in gps_positions:
+		glVertex3f(t[0], t[1], 0.0)
+	glEnd()
+	glLineWidth(1.0)
+
+
+def draw_pv_modules(module_corners, module_centers):
+	for track_id, points in module_corners.items():
+		glPointSize(10)
+		glBegin(GL_POINTS)
+		glColor3f(1.0, 0.0, 0.0)
+		for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
+			glVertex3f(p_x, p_y, p_z)
+		glEnd()
+
+		glBegin(GL_LINE_LOOP)
+		for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
+			glVertex3f(p_x, p_y, p_z)
+		glEnd()
+	# draw PV module centers
+	for track_id, points in module_centers.items():
+		glPointSize(10)
+		glBegin(GL_POINTS)
+		glColor3f(0.0, 1.0, 0.0)
+		for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
+			glVertex3f(p_x, p_y, p_z)
+		glEnd()
+
+
+def draw_origin():
+	"""Draw origin coordinate system (red: x, green: y, blue: z)"""
+	glBegin(GL_LINES)
+	glColor3f(1.0, 0, 0)
+	glVertex3f(0, 0, 0)
+	glVertex3f(3, 0, 0)
+
+	glColor3f(0, 1.0, 0)
+	glVertex3f(0, 0, 0)
+	glVertex3f(0, 3, 0)
+
+	glColor3f(0, 0, 1.0)
+	glVertex3f(0, 0, 0)
+	glVertex3f(0, 0, 3)
+	glEnd()
 
 
 def plot():
-    win = pango.CreateWindowAndBind("pySimpleDisplay", 1600, 900)
-    glEnable(GL_DEPTH_TEST)
+	win = pango.CreateWindowAndBind("pySimpleDisplay", 1600, 900)
+	glEnable(GL_DEPTH_TEST)
 
-    aspect = 1600/900
-    cam_scale = 0.5
-    cam_aspect = aspect
+	aspect = 1600/900
+	cam_scale = 0.5
+	cam_aspect = aspect
 
-    pm = pango.ProjectionMatrix(1600,900,1000,1000,800,450,0.1,1000);
-    mv = pango.ModelViewLookAt(0, 0, -1, 0, 0, 0, pango.AxisY)
-    s_cam = pango.OpenGlRenderState(pm, mv)
+	pm = pango.ProjectionMatrix(1600,900,1000,1000,800,450,0.1,1000);
+	mv = pango.ModelViewLookAt(0, 0, -1, 0, 0, 0, pango.AxisY)
+	s_cam = pango.OpenGlRenderState(pm, mv)
 
-    handler=pango.Handler3D(s_cam)
-    d_cam = pango.CreateDisplay().SetBounds(pango.Attach(0),
-                                            pango.Attach(1),
-                                            pango.Attach(0),
-                                            pango.Attach(1),
-                                            -aspect).SetHandler(handler)
+	handler=pango.Handler3D(s_cam)
+	d_cam = pango.CreateDisplay().SetBounds(pango.Attach(0),
+											pango.Attach(1),
+											pango.Attach(0),
+											pango.Attach(1),
+											-aspect).SetHandler(handler)
 
-    while not pango.ShouldQuit():
-        glClearColor(0.0, 0.0, 0.0, 1.0)
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        d_cam.Activate(s_cam)
-        glMatrixMode(GL_MODELVIEW)
+	# find z position of ground plane
+	#if len(module_corners) > 0:
+	#	ground_plane_z = np.max(np.vstack(module_corners.values())[:, -1]) + 0.5
+	#else:
+	ground_plane_z = np.quantile(map_points.pts_3d[:, -1], 0.95) + 0.5
 
-        # draw map points
-        #draw_map_points(map_points_bak.pts_3d, color=(0.5, 0.5, 0.5), size=4)
-        draw_map_points(map_points.pts_3d, color=(0.5, 0.5, 0.5), size=4)
+	while not pango.ShouldQuit():
+		glClearColor(0.0, 0.0, 0.0, 1.0)
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+		d_cam.Activate(s_cam)
+		glMatrixMode(GL_MODELVIEW)
 
-        # draw origin coordinate system (red: x, green: y, blue: z)
-        glBegin(GL_LINES)
-        glColor3f(1.0, 0, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(3, 0, 0)
+		glDisable(GL_TEXTURE_2D)
+		glBegin(GL_QUADS)
+		glNormal3f(0.0, 1.0, 0.0)
+		z0 = ground_plane_z
+		repeat = 20
+		for y in range(repeat):
+			yStart = 100.0 - y*10.0
+			for x in range(repeat):
+				xStart = x*10.0 - 100.0
+				if ((y % 2) ^ (x % 2)):
+					glColor4ub(41, 41, 41, 255)
+				else:
+					glColor4ub(200, 200, 200, 255)
+				glVertex3f(xStart, yStart, z0)
+				glVertex3f(xStart + 10.0, yStart, z0)
+				glVertex3f(xStart + 10.0, yStart - 10.0, z0)
+				glVertex3f(xStart, yStart - 10.0, z0)
+		glEnd()
 
-        glColor3f(0, 1.0, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, 3, 0)
 
-        glColor3f(0, 0, 1.0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, 0, 3)
-        glEnd()
+		draw_origin()
 
-        # draw every camera pose as view frustrum
-        #poses = [pose_graph_bak.nodes[n]["pose"] for n in pose_graph_bak]
-        #draw_camera_poses(poses, cam_scale, cam_aspect, color=(1.0, 0.6667, 0.0))
+		# draw map points & camera poses
+		draw_map_points(map_points.pts_3d, color=(0.5, 0.5, 0.5), size=4)
 
-        poses = [pose_graph.nodes[n]["pose"] for n in pose_graph]
-        draw_camera_poses(poses, cam_scale, cam_aspect, color=(0.0, 0.6667, 1.0))
+		poses = [pose_graph.nodes[n]["pose"] for n in pose_graph]
+		draw_camera_poses(poses, cam_scale, cam_aspect, color=(0.0, 0.6667, 1.0))
 
-        # draw gps track
-        glLineWidth(3.0)
-        glBegin(GL_LINE_STRIP)
-        glColor3f(1.0, 0.0, 0.0)
-        for t in gps_positions:
-            glVertex3f(t[0], t[1], 0.0)
-        glEnd()
-        glLineWidth(1.0)
+		draw_gps_track(gps_positions)
 
-        # draw PV modules + corners
-        for track_id, points in module_corners.items():
-            glPointSize(10)
-            glBegin(GL_POINTS)
-            glColor3f(1.0, 0.0, 0.0)
-            for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
-                glVertex3f(p_x, p_y, p_z)
-            glEnd()
+		draw_pv_modules(module_corners, module_centers)
 
-            glBegin(GL_LINE_LOOP)
-            for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
-                glVertex3f(p_x, p_y, p_z)
-            glEnd()
-
-        # draw PV module centers
-        for track_id, points in module_centers.items():
-            glPointSize(10)
-            glBegin(GL_POINTS)
-            glColor3f(0.0, 1.0, 0.0)
-            for p_x, p_y, p_z in zip(points[:, 0], points[:, 1], points[:, 2]):
-                glVertex3f(p_x, p_y, p_z)
-            glEnd()
-
-        pango.FinishFrame()
+		pango.FinishFrame()
 
 
 if __name__ == "__main__":
-    plot()
+	plot()

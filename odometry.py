@@ -2,7 +2,6 @@ import os
 import glob
 import json
 import pickle
-import copy
 from collections import defaultdict, Counter
 import numpy as np
 import cv2
@@ -12,7 +11,7 @@ from scipy.spatial import KDTree
 from mapper.map_points import MapPoints, get_representative_orb
 from mapper.pose_graph import get_neighbors
 from mapper.common import Capture, get_visible_points, \
-    get_map_points_and_kps_for_matches
+    get_map_points_and_kps_for_matches, get_local_map
 from mapper.keypoints import extract_keypoints, match
 from mapper.geometry import from_twist, to_twist, estimate_camera_pose, \
     triangulate_map_points
@@ -313,25 +312,7 @@ def update_map_oberservations(map_points, pose_graph, camera_matrix,
     print("Neighboring keyframes: {}".format(neighbors_keyframes))
 
     # obtain map points visible in the neighbouring key frames
-    map_points_local = copy.deepcopy(map_points)
-    delete_idxs = []
-    for map_point_idx, observation in reversed(
-        list(enumerate(map_points.observations))):
-        if not any([keyframe_idx in neighbors_keyframes
-                for keyframe_idx in observation.keys()]):
-            delete_idxs.append(map_point_idx)
-            del map_points_local.observations[map_point_idx]
-    if len(delete_idxs) > 0:
-        delete_idxs = np.hstack(delete_idxs)
-        map_points_local.idx = np.delete(
-            map_points_local.idx, delete_idxs, axis=0)
-        map_points_local.pts_3d = np.delete(
-            map_points_local.pts_3d, delete_idxs, axis=0)
-        map_points_local.representative_orb = np.delete(
-            map_points_local.representative_orb, delete_idxs, axis=0)
-
-    print("Size of local map: {} - Size of global map: {}".format(
-        len(map_points_local.idx), len(map_points.idx)))
+    map_points_local = get_local_map(map_points, neighbors_keyframes)
 
     descriptors = defaultdict(list)
     for node_id in neighbors_keyframes:
@@ -400,8 +381,12 @@ def local_bundle_adjustment(map_points, pose_graph, camera_matrix):
     nodes = [*neighbors_keyframes, newest_node_id]
     print("Bundle adjustment for keyframe {}".format(newest_node_id))
     print("Neighboring keyframes: {}".format(neighbors_keyframes))
+    # set robust kernel to 95 % confidence interval of local map
+    map_points_local = get_local_map(map_points, neighbors_keyframes)
+    robust_kernel_value = 1.96*np.std(map_points_local.pts_3d)
     # perform local bundle adjustment
-    bundle_adjust(pose_graph, map_points, nodes, camera_matrix)
+    bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
+        robust_kernel_value)
 
 
 
@@ -411,7 +396,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    #frame_files = frame_files[1450:]
+    frame_files = frame_files[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"
@@ -481,12 +466,12 @@ if __name__ == "__main__":
                     frame_name, camera_matrix)
 
                 find_neighbor_keyframes(pose_graph, map_points, frame,
-                    camera_matrix)
+                   camera_matrix)
 
                 print("########## performing data association ###########")
                 update_map_oberservations(map_points, pose_graph, camera_matrix)
 
-                print("########## performing local bundle adjusment ###########")
+                print("########## performing local bundle adjustment ###########")
                 local_bundle_adjustment(map_points, pose_graph, camera_matrix)
 
 

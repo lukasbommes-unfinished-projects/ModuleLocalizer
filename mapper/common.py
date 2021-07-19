@@ -1,4 +1,5 @@
 import os
+import copy
 import cv2
 import numpy as np
 
@@ -84,6 +85,37 @@ def get_visible_points(pts, frame_width, frame_height):
     visible = np.all(np.logical_and(
         min_bb <= pts.reshape(-1, 2), pts.reshape(-1, 2) <= max_bb), axis=1)
     return pts[visible], visible
+
+
+def get_local_map(map_points, neighbors_keyframes):
+    """Return a copy of the map points object containing only those map points
+    visible in the neighboring keyframes.
+
+    Args:
+        map_points (`MapPoints object`): The entire map.
+
+        neighbors_keyframes (`list` of `int`): The node ids of the neighboring
+            keyframes.
+    """
+    map_points_local = copy.deepcopy(map_points)
+    delete_idxs = []
+    for map_point_idx, observation in reversed(
+        list(enumerate(map_points.observations))):
+        if not any([keyframe_idx in neighbors_keyframes
+                for keyframe_idx in observation.keys()]):
+            delete_idxs.append(map_point_idx)
+            del map_points_local.observations[map_point_idx]
+    if len(delete_idxs) > 0:
+        delete_idxs = np.hstack(delete_idxs)
+        map_points_local.idx = np.delete(
+            map_points_local.idx, delete_idxs, axis=0)
+        map_points_local.pts_3d = np.delete(
+            map_points_local.pts_3d, delete_idxs, axis=0)
+        map_points_local.representative_orb = np.delete(
+            map_points_local.representative_orb, delete_idxs, axis=0)
+    print("Size of local map: {} - Size of global map: {}".format(
+        len(map_points_local.idx), len(map_points.idx)))
+    return map_points_local
 
 
 def get_map_points_and_kps_for_matches(map_points, last_kf_index, matches):
