@@ -26,8 +26,9 @@ map_points = pickle.load(open("map_points.pkl", "rb"))
 gps_file = "data_processing/splitted/gps/gps.json"
 gps = json.load(open(gps_file, "r"))
 keyframe_idxs =  [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in sorted(pose_graph.nodes)]
-gps_positions = np.array([gps[idx] for idx in keyframe_idxs])
-gps_positions = (gps_positions - gps_positions[0])*1e5
+#gps_positions = np.array([gps[idx] for idx in keyframe_idxs])  # plot only gps trackof keyframes
+gps_positions = np.array(gps)  # plot entire available gps track
+gps_positions = (gps_positions - gps_positions[0])*1e5  # TODO: compute with sim3 solver (in odometry.py)
 
 #pose_graph = pickle.load(open("pose_graph_with_ba.pkl", "rb"))
 #map_points = pickle.load(open("map_points_with_ba.pkl", "rb"))

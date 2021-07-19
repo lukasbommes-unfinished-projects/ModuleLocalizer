@@ -86,20 +86,52 @@ def get_visible_points(pts, frame_width, frame_height):
     return pts[visible], visible
 
 
-def update_matched_flag(pose_graph, matches):
-    """Sets a boolean flag for each keypoint in the pose graph
-    indicating whether this keypoint was already matched to
-    another keypoint in another key frame.
+def get_map_points_and_kps_for_matches(map_points, last_kf_index, matches):
+    """Returns map points and corresponding key points for current frame.
+
+    Given matches between a current frame and the last keyframe the function
+    finds which key point in the current frame correpsonds to which key point
+    in the last key frame and returns the map points corresponding to these
+    key points. It also returns the indices in the `matches` array corresponding
+    to the returned 3D points.
     """
-    train_idxs = [m.trainIdx for m in matches]
-    query_idxs = [m.queryIdx for m in matches]
-    prev_node_id = sorted(pose_graph.nodes)[-1]
+    # get all map points observed in last KF
+    _, pts_3d, associated_kp_indices, _ = map_points.get_by_observation(last_kf_index)
+    # get indices of map points which were found again in the current frame
+    kp_idxs = []
+    new_matches = []
+    match_idxs = []
+    for match_idx, match in enumerate(matches):
+        try:
+            kp_idx = associated_kp_indices.index(match.queryIdx)
+        except ValueError:
+            pass
+        else:
+            kp_idxs.append(kp_idx)
+            match_idxs.append(match_idx)
+            new_matches.append(match)
+    print(("{} of {} ({:3.3f} %) keypoints in last key frame have been "
+          "found again in current frame").format(len(new_matches),
+          len(matches), len(new_matches)/len(matches)))
+    # get map points according to the indices
+    pts_3d = pts_3d[np.array(kp_idxs), :]
+    return pts_3d, np.array(match_idxs)
 
-    num_kps = len(pose_graph.nodes[prev_node_id]["kp"])
-    pose_graph.nodes[prev_node_id]["kp_matched"] = [
-        True if i in train_idxs else False for i in range(num_kps)]
 
-    pose_graph.nodes[prev_node_id-1]
-    num_kps = len(pose_graph.nodes[prev_node_id-1]["kp"])
-    pose_graph.nodes[prev_node_id-1]["kp_matched"] = [
-        True if i in query_idxs else False for i in range(num_kps)]
+# def update_matched_flag(pose_graph, matches):
+#     """Sets a boolean flag for each keypoint in the pose graph
+#     indicating whether this keypoint was already matched to
+#     another keypoint in another key frame.
+#     """
+#     train_idxs = [m.trainIdx for m in matches]
+#     query_idxs = [m.queryIdx for m in matches]
+#     prev_node_id = sorted(pose_graph.nodes)[-1]
+#
+#     num_kps = len(pose_graph.nodes[prev_node_id]["kp"])
+#     pose_graph.nodes[prev_node_id]["kp_matched"] = [
+#         True if i in train_idxs else False for i in range(num_kps)]
+#
+#     pose_graph.nodes[prev_node_id-1]
+#     num_kps = len(pose_graph.nodes[prev_node_id-1]["kp"])
+#     pose_graph.nodes[prev_node_id-1]["kp_matched"] = [
+#         True if i in query_idxs else False for i in range(num_kps)]
