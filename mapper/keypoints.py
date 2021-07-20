@@ -4,16 +4,23 @@ import numpy as np
 from mapper.ssc import ssc
 
 
-def extract_keypoints(frame, fast, orb, max_points=None, use_ssc=False,
-    ssc_threshold=0.1):
-    """Extracts FAST feature points and ORB descriptors in the frame."""
-    kp = fast.detect(frame, None)
-    kp = sorted(kp, key=lambda x:x.response, reverse=True)
-    if max_points is not None:
-        kp = kp[:max_points]
-    if use_ssc:
-        kp = ssc(kp, max_points, ssc_threshold,
-            frame.shape[1], frame.shape[0])
+# def extract_keypoints(frame, fast, orb, max_points=None, use_ssc=False,
+#     ssc_threshold=0.1):
+#     """Extracts FAST feature points and ORB descriptors in the frame."""
+#     kp = fast.detect(frame, None)
+#     kp = sorted(kp, key=lambda x:x.response, reverse=True)
+#     if max_points is not None:
+#         kp = kp[:max_points]
+#     if use_ssc:
+#         kp = ssc(kp, max_points, ssc_threshold,
+#             frame.shape[1], frame.shape[0])
+#     kp, des = orb.compute(frame, kp)
+#     return kp, des
+
+
+def extract_keypoints(frame, orb):
+    """Extracts ORB keypoints and descriptors in the frame."""
+    kp = orb.detect(frame, None)
     kp, des = orb.compute(frame, kp)
     return kp, des
 

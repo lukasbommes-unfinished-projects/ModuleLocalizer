@@ -14,7 +14,7 @@ from OpenGL.GL import *
 from pytransform3d.rotations import axis_angle_from_matrix
 
 from mapper.map_points import MapPoints
-from mapper.geometry import from_twist
+from mapper.geometry import from_twist, transform_to_gps_frame
 from mapper.modules import triangulate_modules
 
 
@@ -25,10 +25,13 @@ map_points = pickle.load(open("map_points.pkl", "rb"))
 
 gps_file = "data_processing/splitted/gps/gps.json"
 gps = json.load(open(gps_file, "r"))
+
+#gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
+
 keyframe_idxs =  [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in sorted(pose_graph.nodes)]
-#gps_positions = np.array([gps[idx] for idx in keyframe_idxs])  # plot only gps trackof keyframes
-gps_positions = np.array(gps)  # plot entire available gps track
-gps_positions = (gps_positions - gps_positions[0])*1e5  # TODO: compute with sim3 solver (in odometry.py)
+gps_positions = np.array([gps[idx] for idx in keyframe_idxs])  # plot only gps track of keyframes
+#gps_positions = np.array(gps)  # plot entire available gps track
+gps_positions = (gps_positions - gps_positions[0])*1/1.5312240158658566e-05 # TODO: compute with sim3 solver (in odometry.py)
 
 # whether to visualize tracked PV modules
 plot_modules = True
@@ -157,6 +160,27 @@ def draw_origin():
 	glEnd()
 
 
+def draw_ground_plane(ground_plane_z):
+	glDisable(GL_TEXTURE_2D)
+	glBegin(GL_QUADS)
+	glNormal3f(0.0, 1.0, 0.0)
+	z0 = ground_plane_z
+	repeat = 20
+	for y in range(repeat):
+		yStart = 100.0 - y*10.0
+		for x in range(repeat):
+			xStart = x*10.0 - 100.0
+			if ((y % 2) ^ (x % 2)):
+				glColor4ub(41, 41, 41, 255)
+			else:
+				glColor4ub(200, 200, 200, 255)
+			glVertex3f(xStart, yStart, z0)
+			glVertex3f(xStart + 10.0, yStart, z0)
+			glVertex3f(xStart + 10.0, yStart - 10.0, z0)
+			glVertex3f(xStart, yStart - 10.0, z0)
+	glEnd()
+
+
 def plot():
 	win = pango.CreateWindowAndBind("pySimpleDisplay", 1600, 900)
 	glEnable(GL_DEPTH_TEST)
@@ -165,11 +189,19 @@ def plot():
 	cam_scale = 0.5
 	cam_aspect = aspect
 
-	pm = pango.ProjectionMatrix(1600,900,1000,1000,800,450,0.1,1000);
+	pm = pango.ProjectionMatrix(
+		1600,  # width
+		900,  # height
+		1000,  # fu
+		1000,  # fv
+		800,  # u0
+		450,  # v0
+		0.1,  # z near
+		1000)  # z far
 	mv = pango.ModelViewLookAt(0, 0, -1, 0, 0, 0, pango.AxisY)
 	s_cam = pango.OpenGlRenderState(pm, mv)
 
-	handler=pango.Handler3D(s_cam)
+	handler = pango.Handler3D(s_cam)
 	d_cam = pango.CreateDisplay().SetBounds(pango.Attach(0),
 											pango.Attach(1),
 											pango.Attach(0),
@@ -177,9 +209,6 @@ def plot():
 											-aspect).SetHandler(handler)
 
 	# find z position of ground plane
-	#if len(module_corners) > 0:
-	#	ground_plane_z = np.max(np.vstack(module_corners.values())[:, -1]) + 0.5
-	#else:
 	ground_plane_z = np.quantile(map_points.pts_3d[:, -1], 0.95) + 0.5
 
 	while not pango.ShouldQuit():
@@ -188,38 +217,13 @@ def plot():
 		d_cam.Activate(s_cam)
 		glMatrixMode(GL_MODELVIEW)
 
-		glDisable(GL_TEXTURE_2D)
-		glBegin(GL_QUADS)
-		glNormal3f(0.0, 1.0, 0.0)
-		z0 = ground_plane_z
-		repeat = 20
-		for y in range(repeat):
-			yStart = 100.0 - y*10.0
-			for x in range(repeat):
-				xStart = x*10.0 - 100.0
-				if ((y % 2) ^ (x % 2)):
-					glColor4ub(41, 41, 41, 255)
-				else:
-					glColor4ub(200, 200, 200, 255)
-				glVertex3f(xStart, yStart, z0)
-				glVertex3f(xStart + 10.0, yStart, z0)
-				glVertex3f(xStart + 10.0, yStart - 10.0, z0)
-				glVertex3f(xStart, yStart - 10.0, z0)
-		glEnd()
-
-
+		draw_ground_plane(ground_plane_z)
 		draw_origin()
-
-		# draw map points & camera poses
 		draw_map_points(map_points.pts_3d, color=(0.5, 0.5, 0.5), size=4)
-
 		poses = [pose_graph.nodes[n]["pose"] for n in pose_graph]
 		draw_camera_poses(poses, cam_scale, cam_aspect, color=(0.0, 0.6667, 1.0))
-
 		draw_gps_track(gps_positions)
-
 		draw_pv_modules(module_corners, module_centers)
-
 		pango.FinishFrame()
 
 

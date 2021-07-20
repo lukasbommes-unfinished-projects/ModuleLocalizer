@@ -58,7 +58,8 @@ def initialize(fast, orb, camera_matrix, min_parallax=60.0):
 
     # get first key frame
     frame, frame_name = get_frame(cap)
-    kp, des = extract_keypoints(frame, fast, orb)
+    #kp, des = extract_keypoints(frame, fast, orb)
+    kp, des = extract_keypoints(frame, orb)
     pose_graph.add_node(0, frame=frame, frame_name=frame_name, kp=kp, des=des)
 
     frame_idx_init = 0
@@ -70,7 +71,8 @@ def initialize(fast, orb, camera_matrix, min_parallax=60.0):
         frame_idx_init += 1
 
         # extract keypoints and match with first key frame
-        kp, des = extract_keypoints(frame, fast, orb)
+        #kp, des = extract_keypoints(frame, fast, orb)
+        kp, des = extract_keypoints(frame, orb)
         matches, last_pts, current_pts, match_frame = match(bf,
             pose_graph.nodes[0]["frame"], frame, pose_graph.nodes[0]["des"],
             des, pose_graph.nodes[0]["kp"], kp, match_max_distance, draw=False)
@@ -396,15 +398,16 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    frame_files = frame_files[11138:]
+    #frame_files = frame_files[18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"
     gps = json.load(open(gps_file, "r"))
 
-    orb = cv2.ORB_create()
+    #orb = cv2.ORB_create()
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     fast = cv2.FastFeatureDetector_create(threshold=12, nonmaxSuppression=True)
+    orb = cv2.ORB_create(nfeatures=5000, fastThreshold=12)
     match_max_distance = 20.0
 
     cv2.namedWindow("match_frame", cv2.WINDOW_NORMAL)
@@ -443,7 +446,8 @@ if __name__ == "__main__":
             print("frame", frame_idx)
 
             # get initial pose estimate by matching keypoints with previous KF
-            current_kp, current_des = extract_keypoints(frame, fast, orb)
+            #current_kp, current_des = extract_keypoints(frame, fast, orb)
+            current_kp, current_des = extract_keypoints(frame, orb)
             prev_node_id = sorted(pose_graph.nodes)[-1]
             matches, last_pts, current_pts, match_frame = match(bf,
                 pose_graph.nodes[prev_node_id]["frame"],
@@ -456,7 +460,7 @@ if __name__ == "__main__":
             median_dist = np.median(
                 np.linalg.norm(last_pts.reshape(-1, 2) -
                 current_pts.reshape(-1, 2), axis=1))
-            print("Median spatial distance of matches: ".format(median_dist))
+            print("Median spatial distance of matches: {}".format(median_dist))
 
             if median_dist >= 100.0:
 

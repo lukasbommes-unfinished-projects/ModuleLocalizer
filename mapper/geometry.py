@@ -57,39 +57,37 @@ def triangulate_map_points(last_pts, current_pts, R1, t1, R2, t2, camera_matrix)
     return pts_3d
 
 
-# def transform_to_gps_frame(pose, pts_3d, pose_graph, gps):
-#     """Transform a pose and 3D points into the GPS frame.
-#
-#     Estimates a SIM(3) transform based on all keyframe positions and
-#     corresponding GPS positions.
-#     """
-#     print("########## registering with GPS frame ###########")
-#
-#     nodes = list(sorted(pose_graph.nodes))
-#     if len(nodes) > 2:
-#         poses = [from_twist(pose_graph.nodes[node_id]["pose"]) for node_id in nodes]
-#         positions = np.vstack([pose[1].reshape(3,) for pose in poses])
-#         rotations = [pose[0] for pose in poses]
-#
-#         # get GPS positions of each key frame
-#         keyframe_idxs = [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in nodes]
-#         gps_positions = np.zeros((len(keyframe_idxs), 3))
-#         gps_positions[:, 0:2] = np.array([gps[idx] for idx in keyframe_idxs])
-#         gps_positions
-#
-#         # compute scaling, rotation and translation between GPS trajectory and camera trajectory
-#         affine = affine_matrix_from_points(
-#             positions.T, gps_positions.T, shear=False, scale=True, usesvd=True)
-#         scale, _, angles, translate, _ = decompose_matrix(affine)
-#         scale = scale[0]
-#         R = active_matrix_from_extrinsic_euler_xyz(angles)
-#         print("similarity transform map -> GPS frame: {}, {}, {}".format(
-#             scale, translate, R))
-#
-#         # transform keyframe poses and map points
-#         map_points.pts_3d = np.matmul(R, scale*map_points.pts_3d.T).T + translate
-#         positions_mapped = np.matmul(R, scale*positions.T).T + translate
-#         for i, node_id in enumerate(nodes):
-#             pose_graph.nodes[node_id]["pose"] = to_twist(rotations[i], positions_mapped[i, :])
-#         print("pose after GPS transform: ", rotations[i], positions_mapped[i, :])
-#         print("pts_3d.mean: ", np.median(map_points.pts_3d, axis=0))
+def transform_to_gps_frame(pose_graph, map_points, gps):
+    """Transform keyframe poses and map points into the GPS frame.
+
+    Estimates a SIM(3) transform based on all keyframe positions and
+    corresponding GPS positions.
+    """
+    nodes = list(sorted(pose_graph.nodes))
+    poses = [from_twist(pose_graph.nodes[node_id]["pose"]) for node_id in nodes]
+    positions = np.vstack([pose[1].reshape(3,) for pose in poses])
+    rotations = [pose[0] for pose in poses]
+
+    # get GPS positions of each key frame
+    keyframe_idxs = [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in nodes]
+    gps_positions = np.zeros((len(keyframe_idxs), 3))
+    gps_positions[:, 0:2] = np.array([gps[idx] for idx in keyframe_idxs])
+
+    # compute scaling, rotation and translation between GPS trajectory and camera trajectory
+    affine = affine_matrix_from_points(
+        positions.T, gps_positions.T, shear=False, scale=True, usesvd=True)
+    scale, _, angles, translate, _ = decompose_matrix(affine)
+    scale = scale[0]
+    R = active_matrix_from_extrinsic_euler_xyz(angles)
+    print("similarity transform map -> GPS frame: {}, {}, {}".format(
+        scale, translate, R))
+
+    # transform keyframe poses and map points
+    map_points.pts_3d = np.matmul(R, scale*map_points.pts_3d.T).T + translate
+    positions_mapped = np.matmul(R, scale*positions.T).T + translate
+    for i, node_id in enumerate(nodes):
+        pose_graph.nodes[node_id]["pose"] = to_twist(rotations[i], positions_mapped[i, :])
+    print("pose after GPS transform: ", rotations[i], positions_mapped[i, :])
+    print("pts_3d.mean: ", np.median(map_points.pts_3d, axis=0))
+
+    return gps_positions
