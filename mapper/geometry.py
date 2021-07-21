@@ -73,6 +73,9 @@ def gps_to_ltp(gps):
             in local tangent plane coordinates East (meters), North (meters),
             height (meters). The origin of the local tangent plane is the first
             input gps position.
+
+        origin (`tuple` of `float`): WGS-84 latitue, longitude and height of
+            the selected origin of the local tangent plane. 
     """
     lon0, lat0, h0 = gps[0, :]
     print(("Origin of local tangent plane: lat: {} deg -- long: {} deg "
@@ -81,7 +84,8 @@ def gps_to_ltp(gps):
     for i, (lon, lat, h) in enumerate(gps):
         e, n, u = geodetic2enu(lat, lon, h, lat0, lon0, h0)
         gps_ltp[i, :] = np.array([e, n, u])
-    return gps_ltp
+    origin = (lat0, lon0, h0)
+    return gps_ltp, origin
 
 
 def transform_to_gps_frame(pose_graph, map_points, gps):
@@ -105,15 +109,17 @@ def transform_to_gps_frame(pose_graph, map_points, gps):
     scale, _, angles, translate, _ = decompose_matrix(affine)
     scale = scale[0]
     R = active_matrix_from_extrinsic_euler_xyz(angles)
+
+    R = np.eye(3)
     print("similarity transform map -> GPS frame: {}, {}, {}".format(
         scale, translate, R))
 
     # transform keyframe poses and map points
     map_points.pts_3d = np.matmul(R, scale*map_points.pts_3d.T).T + translate
     positions_mapped = np.matmul(R, scale*positions.T).T + translate
+    rotations_mapped = [np.matmul(R, rotation) for rotation in rotations]
     for i, node_id in enumerate(nodes):
-        pose_graph.nodes[node_id]["pose"] = to_twist(rotations[i], positions_mapped[i, :])
-    #print("pose after GPS transform: ", rotations[i], positions_mapped[i, :])
+        pose_graph.nodes[node_id]["pose"] = to_twist(rotations_mapped[i], positions_mapped[i, :])
     print("pts_3d.mean: ", np.median(map_points.pts_3d, axis=0))
 
     return gps_positions

@@ -27,7 +27,7 @@ gps_file = "data_processing/splitted/gps/gps.json"
 gps_ = json.load(open(gps_file, "r"))
 gps = np.zeros((len(gps_), 3))
 gps[:, 0:2] = np.array(gps_)
-gps = gps_to_ltp(gps)
+gps, _ = gps_to_ltp(gps)
 
 gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
 
