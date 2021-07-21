@@ -31,11 +31,6 @@ gps, _ = gps_to_ltp(gps)
 
 gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
 
-#keyframe_idxs =  [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in sorted(pose_graph.nodes)]
-#gps_positions = np.array([gps[idx] for idx in keyframe_idxs])  # plot only gps track of keyframes
-#gps_positions = np.array(gps)  # plot entire available gps track
-#gps_positions = (gps_positions - gps_positions[0])*1/1.5312240158658566e-05 # TODO: compute with sim3 solver (in odometry.py)
-
 # whether to visualize tracked PV modules
 plot_modules = True
 module_corners = {}

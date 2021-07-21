@@ -75,7 +75,7 @@ def gps_to_ltp(gps):
             input gps position.
 
         origin (`tuple` of `float`): WGS-84 latitue, longitude and height of
-            the selected origin of the local tangent plane. 
+            the selected origin of the local tangent plane.
     """
     lon0, lat0, h0 = gps[0, :]
     print(("Origin of local tangent plane: lat: {} deg -- long: {} deg "
@@ -86,6 +86,17 @@ def gps_to_ltp(gps):
         gps_ltp[i, :] = np.array([e, n, u])
     origin = (lat0, lon0, h0)
     return gps_ltp, origin
+
+
+# def invert_z_axis(pose_graph, map_points):
+#     """Rotate map points and keyframe poses by 180 degree around x axis to
+#     invert the z axis. Needed to align z-axes of GPS and odometry frame."""
+#     nodes = list(sorted(pose_graph.nodes))
+#     poses = [from_twist(pose_graph.nodes[node_id]["pose"]) for node_id in nodes]
+#     R = np.array([[1, 0, 0],
+#                   [0, -1, 0],
+#                   [0, 0, -1]])
+#     rotations = [np.matmul(R, pose[0]) for pose in poses]
 
 
 def transform_to_gps_frame(pose_graph, map_points, gps):
@@ -110,7 +121,11 @@ def transform_to_gps_frame(pose_graph, map_points, gps):
     scale = scale[0]
     R = active_matrix_from_extrinsic_euler_xyz(angles)
 
+    # just for testing, we do not yet have enough trajectory to perform initialization
     R = np.eye(3)
+    # R = np.array([[1, 0, 0],
+    #               [0, -1, 0],
+    #               [0, 0, -1]])
     print("similarity transform map -> GPS frame: {}, {}, {}".format(
         scale, translate, R))
 
