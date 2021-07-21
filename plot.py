@@ -14,7 +14,7 @@ from OpenGL.GL import *
 from pytransform3d.rotations import axis_angle_from_matrix
 
 from mapper.map_points import MapPoints
-from mapper.geometry import from_twist, transform_to_gps_frame
+from mapper.geometry import from_twist, transform_to_gps_frame, gps_to_ltp
 from mapper.modules import triangulate_modules
 
 
@@ -24,14 +24,17 @@ pose_graph = pickle.load(open("pose_graph.pkl", "rb"))
 map_points = pickle.load(open("map_points.pkl", "rb"))
 
 gps_file = "data_processing/splitted/gps/gps.json"
-gps = json.load(open(gps_file, "r"))
+gps_ = json.load(open(gps_file, "r"))
+gps = np.zeros((len(gps_), 3))
+gps[:, 0:2] = np.array(gps_)
+gps = gps_to_ltp(gps)
 
-#gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
+gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
 
-keyframe_idxs =  [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in sorted(pose_graph.nodes)]
-gps_positions = np.array([gps[idx] for idx in keyframe_idxs])  # plot only gps track of keyframes
+#keyframe_idxs =  [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in sorted(pose_graph.nodes)]
+#gps_positions = np.array([gps[idx] for idx in keyframe_idxs])  # plot only gps track of keyframes
 #gps_positions = np.array(gps)  # plot entire available gps track
-gps_positions = (gps_positions - gps_positions[0])*1/1.5312240158658566e-05 # TODO: compute with sim3 solver (in odometry.py)
+#gps_positions = (gps_positions - gps_positions[0])*1/1.5312240158658566e-05 # TODO: compute with sim3 solver (in odometry.py)
 
 # whether to visualize tracked PV modules
 plot_modules = True
@@ -110,14 +113,21 @@ def draw_map_points(map_points, color=(0.5, 0.5, 0.5), size=2, subsample=1):
 	glEnd()
 
 
-def draw_gps_track(gps_positions):
+def draw_gps_track(gps_positions, size=10.0, color=(1.0, 0.0, 0.0)):
 	glLineWidth(3.0)
 	glBegin(GL_LINE_STRIP)
-	glColor3f(1.0, 0.0, 0.0)
+	glColor3f(*color)
 	for t in gps_positions:
-		glVertex3f(t[0], t[1], 0.0)
+		glVertex3f(t[0], t[1], t[2])
 	glEnd()
 	glLineWidth(1.0)
+
+	glPointSize(size)
+	glBegin(GL_POINTS)
+	glColor3f(*color)
+	for t in gps_positions:
+		glVertex3f(t[0], t[1], t[2])
+	glEnd()
 
 
 def draw_pv_modules(module_corners, module_centers):
@@ -217,7 +227,7 @@ def plot():
 		d_cam.Activate(s_cam)
 		glMatrixMode(GL_MODELVIEW)
 
-		draw_ground_plane(ground_plane_z)
+		#draw_ground_plane(ground_plane_z)
 		draw_origin()
 		draw_map_points(map_points.pts_3d, color=(0.5, 0.5, 0.5), size=4)
 		poses = [pose_graph.nodes[n]["pose"] for n in pose_graph]

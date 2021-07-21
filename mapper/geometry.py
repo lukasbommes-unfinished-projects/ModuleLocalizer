@@ -4,6 +4,8 @@ import numpy as np
 from mapper.transforms import affine_matrix_from_points, decompose_matrix, \
     active_matrix_from_extrinsic_euler_xyz
 
+from mapper.geotransforms import geodetic2enu
+
 
 def to_twist(R, t):
     """Convert a 3x3 rotation matrix and translation vector (shape (3,))
@@ -57,6 +59,31 @@ def triangulate_map_points(last_pts, current_pts, R1, t1, R2, t2, camera_matrix)
     return pts_3d
 
 
+def gps_to_ltp(gps):
+    """Converts GPS readings from WGS-84 (lat, lon, height) to local tangent plane.
+    The first gps reading is choosen as origin.
+
+    Args:
+        gps (`numpy.ndarray`): Shape (-1, 3). Each row is a GPS position in
+            WGS-84 coordinates of the form longitude (degrees), latitude
+            (degrees), height (meters).
+
+    Returns:
+        gps_ltp (`numpy.ndarray`): Shape (-1, 3). Corresponding GPS position
+            in local tangent plane coordinates East (meters), North (meters),
+            height (meters). The origin of the local tangent plane is the first
+            input gps position.
+    """
+    lon0, lat0, h0 = gps[0, :]
+    print(("Origin of local tangent plane: lat: {} deg -- long: {} deg "
+          "-- height: {} m").format(lat0, lon0, h0))
+    gps_ltp = np.zeros_like(gps)
+    for i, (lon, lat, h) in enumerate(gps):
+        e, n, u = geodetic2enu(lat, lon, h, lat0, lon0, h0)
+        gps_ltp[i, :] = np.array([e, n, u])
+    return gps_ltp
+
+
 def transform_to_gps_frame(pose_graph, map_points, gps):
     """Transform keyframe poses and map points into the GPS frame.
 
@@ -70,8 +97,7 @@ def transform_to_gps_frame(pose_graph, map_points, gps):
 
     # get GPS positions of each key frame
     keyframe_idxs = [int(pose_graph.nodes[node_id]["frame_name"][6:]) for node_id in nodes]
-    gps_positions = np.zeros((len(keyframe_idxs), 3))
-    gps_positions[:, 0:2] = np.array([gps[idx] for idx in keyframe_idxs])
+    gps_positions = gps[np.array(keyframe_idxs), :]
 
     # compute scaling, rotation and translation between GPS trajectory and camera trajectory
     affine = affine_matrix_from_points(
@@ -87,7 +113,7 @@ def transform_to_gps_frame(pose_graph, map_points, gps):
     positions_mapped = np.matmul(R, scale*positions.T).T + translate
     for i, node_id in enumerate(nodes):
         pose_graph.nodes[node_id]["pose"] = to_twist(rotations[i], positions_mapped[i, :])
-    print("pose after GPS transform: ", rotations[i], positions_mapped[i, :])
+    #print("pose after GPS transform: ", rotations[i], positions_mapped[i, :])
     print("pts_3d.mean: ", np.median(map_points.pts_3d, axis=0))
 
     return gps_positions
