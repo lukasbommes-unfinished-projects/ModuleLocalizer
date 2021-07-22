@@ -24,8 +24,6 @@ from mapper.bundle_adjustment import bundle_adjust
 # TODO: if system fails due to low number of matches, restart and use last known
 #       pose as initial pose
 
-# - add pyramid level of keypoints into information matrix of local BA (see Orb-SLAM code)
-
 
 def get_frame(cap):
     """Reads and undistorts next frame from stream."""
@@ -136,22 +134,6 @@ def initialize(fast, orb, camera_matrix, min_parallax=60.0):
     return pose_graph, map_points, frame_idx_init
 
 
-def estimate_camera_pose_new(last_pts, current_pts, camera_matrix, min_inliers=20):
-    """Estimate camera pose relative to last key frame by decomposing essential
-    matrix computed from 2D-2D point correspondences in the current frame and
-    last key frame.
-    """
-    # Note: tranlation t is only known up to scale
-    essential_mat, mask = cv2.findEssentialMat(last_pts.reshape(1, -1, 2), current_pts.reshape(1, -1, 2), camera_matrix, method=cv2.LMEDS)
-    num_inliers, R, t, mask = cv2.recoverPose(essential_mat, last_pts.reshape(1, -1, 2), current_pts.reshape(1, -1, 2), camera_matrix, mask=mask)
-    mask = mask.astype(np.bool).reshape(-1,)
-    print("recover pose num inliers: ", num_inliers)
-
-    if num_inliers < min_inliers:
-        raise RuntimeError("Could not recover camera pose.")
-    return R, t, mask
-
-
 def insert_keyframe(pose_graph, map_points, last_pts, current_pts, matches,
     current_kp, current_des, frame, frame_name, camera_matrix):
     """Insert a new keyframe.
@@ -174,9 +156,66 @@ def insert_keyframe(pose_graph, map_points, last_pts, current_pts, matches,
     map points are triangulated again. Camera pose and map points
     are then inserted in the pose graph and map points object.
     """
-    # estimate KF pose
-    R, t, mask = estimate_camera_pose_new(
-        last_pts, current_pts, camera_matrix, min_inliers=20)
+    # # estimate KF pose by decomposing essential matrix (non-planar case)
+    # R, t, mask = estimate_camera_pose(
+    #     last_pts, current_pts, camera_matrix, min_inliers=20)
+    #
+    #
+    # ##################################################################
+    #
+    # matches_query_idxs = np.copy(np.array([m.queryIdx for m in matches]))
+    # matches_train_idxs = np.copy(np.array([m.trainIdx for m in matches]))
+    # pose_graph_copy = pose_graph.copy()
+    # for node in pose_graph_copy.nodes:
+    #     pose_graph_copy.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph_copy.nodes[node]["kp"])
+    # pickle.dump(pose_graph_copy, open("new_pose_tracking/pose_graph.pkl", "wb"))
+    # pickle.dump(map_points, open("new_pose_tracking/map_points.pkl", "wb"))
+    # pickle.dump(last_pts, open("new_pose_tracking/last_pts.pkl", "wb"))
+    # pickle.dump(current_pts, open("new_pose_tracking/current_pts.pkl", "wb"))
+    # #pickle.dump(matches, open("homography_pose_recovery/matches.pkl", "wb"))
+    # pickle.dump(matches_query_idxs, open("new_pose_tracking/matches_query_idxs.pkl", "wb"))
+    # pickle.dump(matches_train_idxs, open("new_pose_tracking/matches_train_idxs.pkl", "wb"))
+    # pickle.dump(cv2.KeyPoint_convert(current_kp), open("new_pose_tracking/current_kp.pkl", "wb"))
+    # pickle.dump(current_des, open("new_pose_tracking/current_des.pkl", "wb"))
+    # pickle.dump(frame, open("new_pose_tracking/frame.pkl", "wb"))
+    # pickle.dump(frame_name, open("new_pose_tracking/frame_name.pkl", "wb"))
+
+
+    # # estimate KF pose by decomposing homography (planar case)
+    #
+    # # recover pose of second (right camera) with respect to first camera by decomposing homography between points
+    # # we could also use the essential matrix, however points are planar which is a degenrate case for the essential matrix
+    # homography, mask_ = cv2.findHomography(last_pts.astype(np.float32).reshape(-1, 1, 2), current_pts.astype(np.float32).reshape(-1, 1, 2), cv2.RANSAC)
+    #
+    # retval, rotations, translations, normals = cv2.decomposeHomographyMat(homography, camera_matrix)
+    # # print("retval", retval)
+    # # print(rotations, translations, normals)
+    # possibleSolutions = cv2.filterHomographyDecompByVisibleRefpoints(rotations, normals, last_pts.astype(np.float32).reshape(-1, 1, 2), current_pts.astype(np.float32).reshape(-1, 1, 2), mask_)
+    # print("possibleSolutions", possibleSolutions)
+    # # # figure out which solution works better
+    # # R_ = rotations[possibleSolutions[0][0]]
+    # # t_ = translations[possibleSolutions[0][0]]
+    # # print("selected R and t", R_, t_)
+    #
+    # print("soltuion from essential matrix decomposition: ", R, t)
+    # print("soltuions from homography decomposition: ")
+    # for rotation, translation in zip(rotations, translations):
+    #     print(rotation)
+    #     print(translation)
+    #
+    # # pick the solution closest to essential matrix decomposition and plot result
+    # dots = []
+    # for translation in translations:
+    #     translation = translation / np.linalg.norm(translation)
+    #     dots.append(np.dot(translation.T, t))
+    # solution_idx = np.argmax(np.array(dots))
+    # print("solution similar to essential matrix decomp.", solution_idx)
+    #
+    # #R = rotations[solution_idx]
+    # #t = translations[solution_idx]
+
+
+    ###################################################################
 
     prev_node_id = sorted(pose_graph.nodes)[-1]
     R_last, t_last = from_twist(pose_graph.nodes[prev_node_id]["pose"])
@@ -416,7 +455,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    #frame_files = frame_files[1600:] #[18142:] #[11138:]
+    frame_files = frame_files[1400:] #[1680:] #[18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"
@@ -437,7 +476,9 @@ if __name__ == "__main__":
     ################################################################################
 
     pose_graph, map_points, frame_idx = initialize(fast, orb, camera_matrix)
-    current_kp = None
+
+    #prev_pose_tracking_data = None
+    #prev_median_dist = None
 
     while(True):
 
@@ -482,22 +523,49 @@ if __name__ == "__main__":
 
             if median_dist >= 100.0 or len(matches) < 200:
 
+                # if prev_pose_tracking_data is None or prev_median_dist is None:
+                #     raise RuntimeError(("Tried to immediately insert a "
+                #         "keyframe. This is not allowed."))
+                #
+                # # load pose tracking data from previous iteration
+                # if prev_median_dist > 50.0:
+                #     frame = prev_pose_tracking_data["frame"]
+                #     frame_name = prev_pose_tracking_data["frame_name"]
+                #     current_kp = prev_pose_tracking_data["current_kp"]
+                #     current_des = prev_pose_tracking_data["current_des"]
+                #     matches = prev_pose_tracking_data["matches"]
+                #     last_pts = prev_pose_tracking_data["last_pts"]
+                #     current_pts = prev_pose_tracking_data["current_pts"]
+                #     match_frame = prev_pose_tracking_data["match_frame"]
+
                 print("########## insert new KF ###########")
                 insert_keyframe(pose_graph, map_points, last_pts,
                     current_pts, matches, current_kp, current_des, frame,
                     frame_name, camera_matrix)
 
-                find_neighbor_keyframes(pose_graph, map_points, frame,
-                   camera_matrix)
-
-                print("########## performing data association ###########")
-                update_map_oberservations(map_points, pose_graph, camera_matrix)
-
-                print("########## performing local bundle adjustment ###########")
-                local_bundle_adjustment(map_points, pose_graph, camera_matrix)
-
+                # find_neighbor_keyframes(pose_graph, map_points, frame,
+                #    camera_matrix)
+                #
+                # print("########## performing data association ###########")
+                # update_map_oberservations(map_points, pose_graph, camera_matrix)
+                #
+                # print("########## performing local bundle adjustment ###########")
+                # local_bundle_adjustment(map_points, pose_graph, camera_matrix)
 
             cv2.imshow("match_frame", match_frame)
+
+            # # update data for pose tracking
+            # prev_pose_tracking_data = {
+            #     "frame": frame,
+            #     "frame_name": frame_name,
+            #     "current_kp": current_kp,
+            #     "current_des": current_des,
+            #     "matches": matches,
+            #     "last_pts": last_pts,
+            #     "current_pts": current_pts,
+            #     "match_frame": match_frame
+            # }
+            # prev_median_dist = median_dist
 
             # handle key presses
             # 'q' - Quit the running program

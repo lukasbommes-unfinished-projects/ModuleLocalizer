@@ -122,7 +122,7 @@ def transform_to_gps_frame(pose_graph, map_points, gps):
     R = active_matrix_from_extrinsic_euler_xyz(angles)
 
     # just for testing, we do not yet have enough trajectory to perform initialization
-    R = np.eye(3)
+    #R = np.eye(3)
     # R = np.array([[1, 0, 0],
     #               [0, -1, 0],
     #               [0, 0, -1]])

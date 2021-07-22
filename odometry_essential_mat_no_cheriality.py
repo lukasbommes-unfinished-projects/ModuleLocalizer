@@ -1,4 +1,5 @@
 import os
+import copy
 import glob
 import json
 import pickle
@@ -156,58 +157,122 @@ def insert_keyframe(pose_graph, map_points, last_pts, current_pts, matches,
     map points are triangulated again. Camera pose and map points
     are then inserted in the pose graph and map points object.
     """
-    # estimate KF pose
-    R, t, mask = estimate_camera_pose(
-        last_pts, current_pts, camera_matrix, min_inliers=20)
+    # # estimate KF pose by decomposing essential matrix (non-planar case)
+    # R, t, mask = estimate_camera_pose(
+    #     last_pts, current_pts, camera_matrix, min_inliers=20)
+    #
+    #
 
-    prev_node_id = sorted(pose_graph.nodes)[-1]
-    R_last, t_last = from_twist(pose_graph.nodes[prev_node_id]["pose"])
-    R_current = np.matmul(R_last, R.T)
-    t_current = t_last + -np.matmul(R.T, t.reshape(3,)).reshape(3,1)
-    print("pose before scale correction: ", R_current, t_current)
+    ###################################################################
 
-    # filter inliers
-    last_pts = last_pts[:, mask, :]
-    current_pts = current_pts[:, mask, :]
-    matches = list(np.array(matches)[mask])
+    # get all four possible solutions of decomposing the essential matrix
+    essential_mat, mask = cv2.findEssentialMat(last_pts.reshape(1, -1, 2), current_pts.reshape(1, -1, 2), camera_matrix, method=cv2.LMEDS)
+    R1, R2, t = cv2.decomposeEssentialMat(essential_mat)
+    print(R1, "\n", t)
+    print(R1, "\n", -t)
+    print(R2, "\n", t)
+    print(R2, "\n", -t)
 
-    # triangulate map points
-    R1, t1 = from_twist(pose_graph.nodes[prev_node_id]["pose"])
-    pts_3d = triangulate_map_points(
-        last_pts, current_pts, R1, t1, R_current, t_current, camera_matrix)
+    solutions = [
+        [R1,  t],
+        [R1, -t],
+        [R2,  t],
+        [R2, -t],
+    ]
 
-    # rescale translation t by computing the distance ratio between
-    # triangulated world points and world points in previous keyframe
-    pts_3d_prev, match_idxs = get_map_points_and_kps_for_matches(
-        map_points, prev_node_id, matches)
-    # find corresponding sub-array in current pts_3d
-    pts_3d_current = pts_3d[match_idxs, :]
+    solutions = copy.deepcopy(solutions)
 
-    # compute scale ratio for random pairs of points
-    num_points = np.minimum(10000, pts_3d_prev.shape[0]**2)
-    scale_ratios = []
-    for _ in range(num_points):
-        first_pt_idx, second_pt_idx = np.random.choice(
-            range(pts_3d_prev.shape[0]), size=(2,), replace=False)
-        # compute distance between the selected points
-        dist_prev = np.linalg.norm(
-            pts_3d_prev[first_pt_idx, :] - pts_3d_prev[second_pt_idx, :])
-        dist_current = np.linalg.norm(
-            pts_3d_current[first_pt_idx, :] - pts_3d_current[second_pt_idx, :])
-        scale_ratio = dist_prev / dist_current
-        scale_ratios.append(scale_ratio)
+    reprojection_errors = []
+    num_positive_depth = []
+    pts_3ds = []
+    R_currents = []
+    t_currents = []
 
-    # rescale translation using the median scale ratio
-    t *= np.median(scale_ratios)
+    for R, t in solutions:
+        print(R, t)
 
-    R_last, t_last = from_twist(pose_graph.nodes[prev_node_id]["pose"])
-    R_current = np.matmul(R_last, R.T)
-    t_current = t_last + -np.matmul(R.T, t.reshape(3,)).reshape(3,1)
-    print("pose after scale correction: ", R_current, t_current)
+        prev_node_id = sorted(pose_graph.nodes)[-1]
+        R_last, t_last = from_twist(pose_graph.nodes[prev_node_id]["pose"])
+        R_current = np.matmul(R_last, R.T)
+        t_current = t_last + -np.matmul(R.T, t.reshape(3,)).reshape(3,1)
+        #print("pose before scale correction: ", R_current, t_current)
 
-    # triangulate map points using the scale-corrected pose
-    pts_3d = triangulate_map_points(
-        last_pts, current_pts, R1, t1, R_current, t_current, camera_matrix)
+        # filter inliers
+        #last_pts = last_pts[:, mask, :]
+        #current_pts = current_pts[:, mask, :]
+        #matches_query_idxs = list(np.array(matches_query_idxs)[mask])
+
+        # triangulate map points
+        R_prev, t_prev = from_twist(pose_graph.nodes[prev_node_id]["pose"])
+        pts_3d = triangulate_map_points(
+            last_pts, current_pts, R_prev, t_prev, R_current, t_current, camera_matrix)
+
+        # rescale translation t by computing the distance ratio between
+        # triangulated world points and world points in previous keyframe
+        pts_3d_prev, match_idxs = get_map_points_and_kps_for_matches(
+            map_points, prev_node_id, matches)
+        # find corresponding sub-array in current pts_3d
+        pts_3d_current = pts_3d[match_idxs, :]
+
+        # compute scale ratio for random pairs of points
+        num_points = np.minimum(10000, pts_3d_prev.shape[0]**2)
+        scale_ratios = []
+        for _ in range(num_points):
+            first_pt_idx, second_pt_idx = np.random.choice(
+                range(pts_3d_prev.shape[0]), size=(2,), replace=False)
+            # compute distance between the selected points
+            dist_prev = np.linalg.norm(
+                pts_3d_prev[first_pt_idx, :] - pts_3d_prev[second_pt_idx, :])
+            dist_current = np.linalg.norm(
+                pts_3d_current[first_pt_idx, :] - pts_3d_current[second_pt_idx, :])
+            scale_ratio = dist_prev / dist_current
+            scale_ratios.append(scale_ratio)
+
+        print("median scale ratio: ", np.median(scale_ratios))
+
+        # rescale translation using the median scale ratio
+        t_scaled = t * np.median(scale_ratios)
+
+        R_last, t_last = from_twist(pose_graph.nodes[prev_node_id]["pose"])
+        R_current = np.matmul(R_last, R.T)
+        t_current = t_last + -np.matmul(R.T, t_scaled.reshape(3,)).reshape(3,1)
+        #print("pose after scale correction: ", R_current, t_current)
+
+        # triangulate map points using the scale-corrected pose
+        pts_3d = triangulate_map_points(
+            last_pts, current_pts, R_prev, t_prev, R_current, t_current, camera_matrix)
+
+        pts_3ds.append(pts_3d)
+        R_currents.append(R_current)
+        t_currents.append(t_current)
+
+        # project triangulated points back into the camera and compute reprojection error
+        projected_pts, _ = cv2.projectPoints(pts_3d, R_current.T, -R_current.T.dot(t_current), camera_matrix, None)
+        reprojection_error = np.mean(np.linalg.norm(projected_pts.reshape(-1, 2) - current_pts.reshape(-1, 2), axis=1))
+        #reprojection_error = np.linalg.norm(projected_pts.reshape(-1, 2) - current_pts.reshape(-1, 2))
+        print("reprojection error: ", reprojection_error)
+
+        # project points into camera coordinates and compute the fraction of points with positive depth
+        pts_3d_homogenous = cv2.convertPointsToHomogeneous(pts_3d.reshape(-1, 3)).reshape(-1, 4)
+        proj_matrix = np.hstack([R_current, R_current.dot(t_current)])
+        points = np.matmul(proj_matrix, pts_3d_homogenous.T).T
+        num_points_positive_depth = np.sum(points[:, -1] > 0)
+        print("positive depth points: ", num_points_positive_depth)
+
+        reprojection_errors.append(reprojection_error)
+        num_positive_depth.append(num_points_positive_depth)
+
+    # select soltuion with smallest reprojection error and most points with positive depth
+    a = 1.0 - reprojection_errors / np.max(reprojection_errors)
+    b = num_positive_depth / np.max(num_positive_depth)
+    best_solution_idx = np.argmax(a * b)
+    print("best solution idx: ", best_solution_idx)
+
+    R_current = R_currents[best_solution_idx]
+    t_current = t_currents[best_solution_idx]
+    pts_3d = pts_3ds[best_solution_idx]
+
+    ###################################################################
 
     # insert new keyframe into pose graph
     pose_graph.add_node(prev_node_id+1,
@@ -398,7 +463,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    #frame_files = frame_files[18142:] #[11138:]
+    frame_files = frame_files[1680:] #[1400:] #[18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"
@@ -419,7 +484,9 @@ if __name__ == "__main__":
     ################################################################################
 
     pose_graph, map_points, frame_idx = initialize(fast, orb, camera_matrix)
-    current_kp = None
+
+    #prev_pose_tracking_data = None
+    #prev_median_dist = None
 
     while(True):
 
@@ -464,22 +531,49 @@ if __name__ == "__main__":
 
             if median_dist >= 100.0 or len(matches) < 200:
 
+                # if prev_pose_tracking_data is None or prev_median_dist is None:
+                #     raise RuntimeError(("Tried to immediately insert a "
+                #         "keyframe. This is not allowed."))
+                #
+                # # load pose tracking data from previous iteration
+                # if prev_median_dist > 50.0:
+                #     frame = prev_pose_tracking_data["frame"]
+                #     frame_name = prev_pose_tracking_data["frame_name"]
+                #     current_kp = prev_pose_tracking_data["current_kp"]
+                #     current_des = prev_pose_tracking_data["current_des"]
+                #     matches = prev_pose_tracking_data["matches"]
+                #     last_pts = prev_pose_tracking_data["last_pts"]
+                #     current_pts = prev_pose_tracking_data["current_pts"]
+                #     match_frame = prev_pose_tracking_data["match_frame"]
+
                 print("########## insert new KF ###########")
                 insert_keyframe(pose_graph, map_points, last_pts,
                     current_pts, matches, current_kp, current_des, frame,
                     frame_name, camera_matrix)
 
-                find_neighbor_keyframes(pose_graph, map_points, frame,
-                   camera_matrix)
-
-                print("########## performing data association ###########")
-                update_map_oberservations(map_points, pose_graph, camera_matrix)
-
-                print("########## performing local bundle adjustment ###########")
-                local_bundle_adjustment(map_points, pose_graph, camera_matrix)
-
+                # find_neighbor_keyframes(pose_graph, map_points, frame,
+                #    camera_matrix)
+                #
+                # print("########## performing data association ###########")
+                # update_map_oberservations(map_points, pose_graph, camera_matrix)
+                #
+                # print("########## performing local bundle adjustment ###########")
+                # local_bundle_adjustment(map_points, pose_graph, camera_matrix)
 
             cv2.imshow("match_frame", match_frame)
+
+            # # update data for pose tracking
+            # prev_pose_tracking_data = {
+            #     "frame": frame,
+            #     "frame_name": frame_name,
+            #     "current_kp": current_kp,
+            #     "current_des": current_des,
+            #     "matches": matches,
+            #     "last_pts": last_pts,
+            #     "current_pts": current_pts,
+            #     "match_frame": match_frame
+            # }
+            # prev_median_dist = median_dist
 
             # handle key presses
             # 'q' - Quit the running program

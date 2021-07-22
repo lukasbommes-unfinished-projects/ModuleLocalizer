@@ -29,7 +29,8 @@ gps = np.zeros((len(gps_), 3))
 gps[:, 0:2] = np.array(gps_)
 gps, _ = gps_to_ltp(gps)
 
-gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
+gps_positions = []
+#gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
 
 # whether to visualize tracked PV modules
 plot_modules = True
