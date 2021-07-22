@@ -8,10 +8,10 @@ import networkx as nx
 from ssc import ssc
 from common import Capture
 
-camera_matrix = pickle.load(open("camera_calibration/parameters/ir/camera_matrix.pkl", "rb"))
-dist_coeffs = pickle.load(open("camera_calibration/parameters/ir/dist_coeffs.pkl", "rb"))
+camera_matrix = pickle.load(open("../camera_calibration/parameters/ir/camera_matrix.pkl", "rb"))
+dist_coeffs = pickle.load(open("../camera_calibration/parameters/ir/dist_coeffs.pkl", "rb"))
 
-frames_root = "/storage/data/splitted/20210510_Schmalenbach/02_north"
+frames_root = "../data_processing/splitted"
 frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
 cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
