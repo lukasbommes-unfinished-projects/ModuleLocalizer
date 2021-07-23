@@ -156,29 +156,32 @@ def insert_keyframe(pose_graph, map_points, last_pts, current_pts, matches,
     map points are triangulated again. Camera pose and map points
     are then inserted in the pose graph and map points object.
     """
-    # # estimate KF pose by decomposing essential matrix (non-planar case)
-    # R, t, mask = estimate_camera_pose(
-    #     last_pts, current_pts, camera_matrix, min_inliers=20)
-    #
-    #
-    # ##################################################################
-    #
-    # matches_query_idxs = np.copy(np.array([m.queryIdx for m in matches]))
-    # matches_train_idxs = np.copy(np.array([m.trainIdx for m in matches]))
-    # pose_graph_copy = pose_graph.copy()
-    # for node in pose_graph_copy.nodes:
-    #     pose_graph_copy.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph_copy.nodes[node]["kp"])
-    # pickle.dump(pose_graph_copy, open("new_pose_tracking/pose_graph.pkl", "wb"))
-    # pickle.dump(map_points, open("new_pose_tracking/map_points.pkl", "wb"))
-    # pickle.dump(last_pts, open("new_pose_tracking/last_pts.pkl", "wb"))
-    # pickle.dump(current_pts, open("new_pose_tracking/current_pts.pkl", "wb"))
-    # #pickle.dump(matches, open("homography_pose_recovery/matches.pkl", "wb"))
-    # pickle.dump(matches_query_idxs, open("new_pose_tracking/matches_query_idxs.pkl", "wb"))
-    # pickle.dump(matches_train_idxs, open("new_pose_tracking/matches_train_idxs.pkl", "wb"))
-    # pickle.dump(cv2.KeyPoint_convert(current_kp), open("new_pose_tracking/current_kp.pkl", "wb"))
-    # pickle.dump(current_des, open("new_pose_tracking/current_des.pkl", "wb"))
-    # pickle.dump(frame, open("new_pose_tracking/frame.pkl", "wb"))
-    # pickle.dump(frame_name, open("new_pose_tracking/frame_name.pkl", "wb"))
+    # estimate KF pose by decomposing essential matrix (non-planar case)
+    R, t, mask = estimate_camera_pose(
+        last_pts, current_pts, camera_matrix, min_inliers=20)
+
+
+    ##################################################################
+
+    matches_query_idxs = np.copy(np.array([m.queryIdx for m in matches]))
+    matches_train_idxs = np.copy(np.array([m.trainIdx for m in matches]))
+    pose_graph_copy = pose_graph.copy()
+    for node in pose_graph_copy.nodes:
+        pose_graph_copy.nodes[node]["kp"] = cv2.KeyPoint_convert(pose_graph_copy.nodes[node]["kp"])
+    pickle.dump(pose_graph_copy, open("new_pose_tracking/pose_graph.pkl", "wb"))
+    pickle.dump(map_points, open("new_pose_tracking/map_points.pkl", "wb"))
+    pickle.dump(last_pts, open("new_pose_tracking/last_pts.pkl", "wb"))
+    pickle.dump(current_pts, open("new_pose_tracking/current_pts.pkl", "wb"))
+    #pickle.dump(matches, open("homography_pose_recovery/matches.pkl", "wb"))
+    pickle.dump(matches_query_idxs, open("new_pose_tracking/matches_query_idxs.pkl", "wb"))
+    pickle.dump(matches_train_idxs, open("new_pose_tracking/matches_train_idxs.pkl", "wb"))
+    pickle.dump(cv2.KeyPoint_convert(current_kp), open("new_pose_tracking/current_kp.pkl", "wb"))
+    pickle.dump(current_des, open("new_pose_tracking/current_des.pkl", "wb"))
+    pickle.dump(frame, open("new_pose_tracking/frame.pkl", "wb"))
+    pickle.dump(frame_name, open("new_pose_tracking/frame_name.pkl", "wb"))
+
+    if len(pose_graph) == 3:
+        exit()
 
 
     # # estimate KF pose by decomposing homography (planar case)
@@ -455,7 +458,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    frame_files = frame_files[1400:] #[1680:] #[18142:] #[11138:]
+    frame_files = frame_files[1680:] #[1400:] #[18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"

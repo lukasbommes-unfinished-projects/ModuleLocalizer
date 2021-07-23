@@ -314,12 +314,13 @@ def estimate_camera_pose(img_points, pts_3d, camera_matrix):
         This function assumes keypoints to be extracted from an undistorted
         frame.
     """
+    print("size of points in estimate_camera_pose", img_points.shape, pts_3d.shape)
     success, rvec, tvec, inliers = cv2.solvePnPRansac(
         pts_3d.reshape(-1, 1, 3),
         img_points.reshape(-1, 1, 2),
         camera_matrix,
         None,
-        reprojectionError=1,
+        reprojectionError=8,
         iterationsCount=100,
         flags=cv2.SOLVEPNP_ITERATIVE)
     if not success:
@@ -423,10 +424,10 @@ while(True):
             match_frame = cv2.circle(match_frame, center=(int(w+pt[0, 0]), int(pt[0, 1])), radius=3, color=(0, 0, 0), thickness=-1)
 
         # recover initial camera pose of current frame by solving PnP
-        print(img_points.shape)
-        print(pts_3d)
-        print(pts_3d.shape)
-        print(pts_3d.dtype)
+        #print(img_points.shape)
+        #print(pts_3d)
+        #print(pts_3d.shape)
+        #print(pts_3d.dtype)
         #print("current_pts before PnP", img_points, "len", img_points.shape)
         R_current, t_current = estimate_camera_pose(img_points, pts_3d, camera_matrix)
         current_pose = to_twist(R_current, t_current)
@@ -451,7 +452,7 @@ while(True):
                                           [0, 0, 0, 1, 0, 0],   # t1 = x
                                           [0, 0, 0, 0, 1, 0],   # t2 = y
                                           [0, 0, 0, 0, 0, 10]]) # t3 = z
-        pose_distance_threshold = 10
+        pose_distance_threshold = 1.0
         # compute relative pose to pose of last keyframe
         prev_node_id = sorted(pose_graph.nodes)[-1]
         R_last_kf, t_last_kf = from_twist(pose_graph.nodes[prev_node_id]["pose"])
