@@ -377,7 +377,7 @@ def update_map_oberservations(map_points, pose_graph, camera_matrix,
     print(Counter(sorted([len(ob) for ob in map_points.observations])))
 
 
-def local_bundle_adjustment(map_points, pose_graph, camera_matrix):
+def local_bundle_adjustment(map_points, pose_graph, camera_matrix, keypoint_scale_levels):
     """Perform local bundle adjustment with local map and local keyframes."""
     newest_node_id = list(sorted(pose_graph.nodes))[-1]
     neighbors_keyframes = get_neighbors(pose_graph, newest_node_id)
@@ -389,7 +389,7 @@ def local_bundle_adjustment(map_points, pose_graph, camera_matrix):
     robust_kernel_value = 1.96*np.std(map_points_local.pts_3d)
     # perform local bundle adjustment
     bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
-        robust_kernel_value)
+        keypoint_scale_levels, robust_kernel_value)
 
 
 def estimate_camera_pose_pnp(img_points, pts_3d, camera_matrix, prev_pose):
@@ -425,19 +425,30 @@ def estimate_camera_pose_pnp(img_points, pts_3d, camera_matrix, prev_pose):
         img_points.reshape(-1, 1, 2),
         camera_matrix,
         None,
-        rvec=prev_pose[:3].reshape(3, 1),
-        tvec=prev_pose[3:].reshape(3, 1),
-        useExtrinsicGuess=True,
+        #rvec=prev_pose[:3].reshape(3, 1),
+        #tvec=prev_pose[3:].reshape(3, 1),
+        #useExtrinsicGuess=True,
+        #confidence=0.999,
         reprojectionError=1,
         iterationsCount=1000,
-        flags=cv2.SOLVEPNP_ITERATIVE)
+        flags=cv2.SOLVEPNP_SQPNP) #cv2.SOLVEPNP_ITERATIVE), SOLVEPNP_SQPNP
     if not success:
         raise RuntimeError("Could not compute the camera pose for the new frame with solvePnP.")
+
+    # does not work, yields corrupted results
+    # rvec, tvec = cv2.solvePnPRefineVVS(
+    #     pts_3d.reshape(-1, 1, 3),
+    #     img_points.reshape(-1, 1, 2),
+    #     camera_matrix,
+    #     None,
+    #     rvec,
+    #     tvec)
+
     print("solvePnP success", success)
     print("solvePnP inliers", inliers.shape)
     R = cv2.Rodrigues(rvec)[0].T
     t = -np.matmul(cv2.Rodrigues(rvec)[0].T, tvec)
-    return R, t
+    return R, t, inliers
 
 
 def get_map_points_and_img_points_for_matches(last_kf_index, matches, current_kp):
@@ -497,7 +508,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    frame_files = frame_files[100:] #[100:] # [18142:] #[11138:]
+    #frame_files = frame_files[1680:] #[100:] # [18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"
@@ -506,7 +517,10 @@ if __name__ == "__main__":
     #orb = cv2.ORB_create()
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     fast = cv2.FastFeatureDetector_create(threshold=12, nonmaxSuppression=True)
-    orb = cv2.ORB_create(nfeatures=5000, fastThreshold=12)
+    orb_scale_factor = 1.2
+    orb_nlevels = 8
+    orb = cv2.ORB_create(nfeatures=5000, fastThreshold=12, scaleFactor=orb_scale_factor, nlevels=orb_nlevels)
+    keypoint_scale_levels = np.array([orb_scale_factor**i for i in range(orb_nlevels)])
     match_max_distance = 20.0
 
     cv2.namedWindow("match_frame", cv2.WINDOW_NORMAL)
@@ -525,9 +539,12 @@ if __name__ == "__main__":
     kf_candidate_frame_name = None
     kf_candidate_pose = None
 
-    last_frame_was_keyframe = False
+    #last_frame_was_keyframe = False
     current_kp = None
     velocity = (np.eye(3), 0.0)
+
+    FPS = 30.0
+    since_last_keyframe = np.inf
 
     prev_node_id = sorted(pose_graph.nodes)[-1]
     prev_pose = np.copy(pose_graph.nodes[prev_node_id]["pose"])
@@ -538,13 +555,13 @@ if __name__ == "__main__":
         try:
 
             # TODO: skip every 2 out of 3 frames to simulate lower frame rate
-            if not last_frame_was_keyframe:
-                current_frame, current_frame_name = get_frame(cap)
-                print("new frame: ", current_frame_name)
-                if current_frame is None:
-                    break
+            #if not last_frame_was_keyframe:
+            current_frame, current_frame_name = get_frame(cap)
+            print("new frame: ", current_frame_name)
+            if current_frame is None:
+                break
 
-                frame_idx += 1
+            frame_idx += 1
             print("frame", frame_idx)
 
             # get initial pose estimate by matching keypoints with previous KF
@@ -578,10 +595,12 @@ if __name__ == "__main__":
 
             # recover initial camera pose of current frame by solving PnP
             #print("prev pose: {} \n {}".format(*from_twist(prev_pose)))
-            R_current, t_current = estimate_camera_pose_pnp(
+            R_current, t_current, inliers = estimate_camera_pose_pnp(
                 img_points, pts_3d, camera_matrix, predicted_pose)
             current_pose = to_twist(R_current, t_current)
             print("solve pnp estimated pose: {} \n {}".format(R_current, t_current))
+
+            #print("inlires", inliers)
 
             assert np.allclose(np.linalg.det(R_current), 1.0), "Determinant of rotation matrix in local tracking is not 1."
 
@@ -610,20 +629,11 @@ if __name__ == "__main__":
                 current_pts.reshape(-1, 2), axis=1))
             print("Median spatial distance of matches: {}".format(median_dist))
 
-            if median_dist < 100.0 and len(matches) > 200:  #pose_dist < 4.0 and
-                last_frame_was_keyframe = False
+            # determine whether to a keyframe needs to be inserted
+            if (median_dist >= 100.0 or len(matches) < 200) and since_last_keyframe > int(0.5 * FPS):  #pose_dist < 4.0
+                since_last_keyframe = 0
 
-                # maintain frame data in case the next frame exceeds the pose distance threshold
-                kf_candidate_frame = np.copy(current_frame)
-                kf_candidate_frame_name = copy.copy(current_frame_name)
-                kf_candidate_pose = np.copy(current_pose)
-                #print("Set kf_candidate_pose to ", kf_candidate_pose)
-
-                velocity = estimate_velocity(prev_pose, current_pose)
-                prev_pose = np.copy(current_pose)
-
-            else:  # insert a new keyframe with data of previous frame, then track again
-                last_frame_was_keyframe = True  # do not retrieve a new frame in the next iteration as we first need to process the already retrieved frame
+                #last_frame_was_keyframe = True  # do not retrieve a new frame in the next iteration as we first need to process the already retrieved frame
 
                 print("########## insert new KF ###########")
 
@@ -695,11 +705,25 @@ if __name__ == "__main__":
                 update_map_oberservations(map_points, pose_graph, camera_matrix)
 
                 print("########## performing local bundle adjustment ###########")
-                local_bundle_adjustment(map_points, pose_graph, camera_matrix)
+                local_bundle_adjustment(map_points, pose_graph, camera_matrix, keypoint_scale_levels)
+
+            else:
+                #last_frame_was_keyframe = False
+                since_last_keyframe += 1
+
+                # maintain frame data in case the next frame exceeds the pose distance threshold
+                kf_candidate_frame = np.copy(current_frame)
+                kf_candidate_frame_name = copy.copy(current_frame_name)
+                kf_candidate_pose = np.copy(current_pose)
+                #print("Set kf_candidate_pose to ", kf_candidate_pose)
+
+                velocity = estimate_velocity(prev_pose, current_pose)
+                prev_pose = np.copy(current_pose)
 
 
             cv2.imshow("match_frame", match_frame)
-            print("last_frame_was_keyframe: ", last_frame_was_keyframe)
+            print("since_last_keyframe: ", since_last_keyframe)
+            #print("last_frame_was_keyframe: ", last_frame_was_keyframe)
 
             # handle key presses
             # 'q' - Quit the running program

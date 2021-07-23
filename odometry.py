@@ -376,7 +376,7 @@ def update_map_oberservations(map_points, pose_graph, camera_matrix,
     print(Counter(sorted([len(ob) for ob in map_points.observations])))
 
 
-def local_bundle_adjustment(map_points, pose_graph, camera_matrix):
+def local_bundle_adjustment(map_points, pose_graph, camera_matrix, keypoint_scale_levels):
     """Perform local bundle adjustment with local map and local keyframes."""
     newest_node_id = list(sorted(pose_graph.nodes))[-1]
     neighbors_keyframes = get_neighbors(pose_graph, newest_node_id)
@@ -385,10 +385,10 @@ def local_bundle_adjustment(map_points, pose_graph, camera_matrix):
     print("Neighboring keyframes: {}".format(neighbors_keyframes))
     # set robust kernel to 95 % confidence interval of local map
     map_points_local = get_local_map(map_points, neighbors_keyframes)
-    robust_kernel_value = 1.96*np.std(map_points_local.pts_3d)
+    robust_kernel_value = np.sqrt(5.99) #1.96*np.std(map_points_local.pts_3d)
     # perform local bundle adjustment
     bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
-        robust_kernel_value)
+        keypoint_scale_levels, robust_kernel_value)
 
 
 
@@ -407,7 +407,10 @@ if __name__ == "__main__":
     #orb = cv2.ORB_create()
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     fast = cv2.FastFeatureDetector_create(threshold=12, nonmaxSuppression=True)
-    orb = cv2.ORB_create(nfeatures=5000, fastThreshold=12)
+    orb_scale_factor = 1.2
+    orb_nlevels = 8
+    orb = cv2.ORB_create(nfeatures=5000, fastThreshold=12, scaleFactor=orb_scale_factor, nlevels=orb_nlevels)
+    keypoint_scale_levels = np.array([orb_scale_factor**i for i in range(orb_nlevels)])
     match_max_distance = 20.0
 
     cv2.namedWindow("match_frame", cv2.WINDOW_NORMAL)
@@ -476,7 +479,7 @@ if __name__ == "__main__":
                 update_map_oberservations(map_points, pose_graph, camera_matrix)
 
                 print("########## performing local bundle adjustment ###########")
-                local_bundle_adjustment(map_points, pose_graph, camera_matrix)
+                local_bundle_adjustment(map_points, pose_graph, camera_matrix, keypoint_scale_levels)
 
 
             cv2.imshow("match_frame", match_frame)

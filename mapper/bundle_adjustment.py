@@ -6,7 +6,9 @@ from mapper.geometry import from_twist, to_twist
 
 
 def bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
-    robust_kernel_value=None, verbose=True):
+    keypoint_scale_levels, robust_kernel_value=None, verbose=True):
+
+    inv_keypoint_scale_levels2 = 1.0/np.square(keypoint_scale_levels)
 
     # setup optimizer and camera parameters
     optimizer = g2o.SparseOptimizer()
@@ -62,15 +64,15 @@ def bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
                 continue
             if kp_idx is None:
                 continue
-            kp = cv2.KeyPoint_convert(
-                pose_graph.nodes[node_id]["kp"])
-            measurement = kp[kp_idx]
+            kp = pose_graph.nodes[node_id]["kp"][kp_idx]
 
             edge = g2o.EdgeProjectXYZ2UV()
             edge.set_vertex(0, vp)  # map point
             edge.set_vertex(1, optimizer.vertex(node_id))  # pose of observing keyframe
-            edge.set_measurement(measurement)   # keypoint pixel position corresponding to that map point in that key frame
-            edge.set_information(np.identity(2))
+            edge.set_measurement(kp.pt)   # keypoint pixel position corresponding to that map point in that key frame
+            keypoint_scale_levels
+            inv_sigma2 = inv_keypoint_scale_levels2[kp.octave]
+            edge.set_information(np.identity(2)*inv_sigma2)
             if robust_kernel_value:
                 edge.set_robust_kernel(g2o.RobustKernelHuber(
                     robust_kernel_value))
