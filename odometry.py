@@ -327,23 +327,15 @@ def update_map_oberservations(map_points, pose_graph, camera_matrix,
         # search for matches with keypoints in local neighborhod of projected point
         # if match could be found update the visible KF and associated kp indices of the corresponding map point
         kp = pose_graph.nodes[node_id]["kp"]
-        kp = cv2.KeyPoint_convert(kp)
         des = pose_graph.nodes[node_id]["des"]
-        #kp_matched = np.array(pose_graph.nodes[node_id]["kp_matched"])
-
-        # possible improvements:
-        # compute fundamental matrix from essential matrix
-        # use cv2.computeCorrespondEpilines to compute epipolar lines in this key frame (with node_id)
-        # search along epipolar line for matches instead of building the mask and brute force matching
 
         # build a mask for ORB descriptor matching which permits only matches of nearby points
-        # this is slow: it would be better if we could ignore the keypoints that are already matched
         mask = np.zeros((len(map_points_local.representative_orb), len(des)), dtype=np.uint8)
-        kdtree = KDTree(kp.reshape(-1, 2).astype(np.uint16))  # KD-tree for fast lookup of neighbors
-        neighbor_kp_idxs = kdtree.query_ball_point(projected_pts.reshape(-1, 2), r=max_search_radius)
-        for map_point_idx, kp_idxs in enumerate(neighbor_kp_idxs):
-            for kp_idx in kp_idxs:
-                mask[map_point_idx, kp_idx] = 1
+        kp_ = cv2.KeyPoint_convert(kp).astype(np.uint16)
+        pts = projected_pts.reshape(-1, 2)
+        for i in range(len(pts)):
+            d = (kp_[:, 0] - pts[i, 0])**2 + (kp_[:, 1] - pts[i, 1])**2
+            mask[i, d < max_search_radius**2] = 1
 
         # find matches between projected map points and descriptors
         bf_local = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)  # set to False
@@ -398,7 +390,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    #frame_files = frame_files[18142:] #[11138:]
+    #frame_files = frame_files[1400:] #[10094:] #[18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"

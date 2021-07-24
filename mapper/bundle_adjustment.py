@@ -6,7 +6,7 @@ from mapper.geometry import from_twist, to_twist
 
 
 def bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
-    keypoint_scale_levels, robust_kernel_value=None, verbose=True):
+    keypoint_scale_levels, robust_kernel_value=None, nsteps=20, verbose=True):
 
     inv_keypoint_scale_levels2 = 1.0/np.square(keypoint_scale_levels)
 
@@ -90,7 +90,7 @@ def bundle_adjust(pose_graph, map_points, nodes, camera_matrix,
 
     optimizer.initialize_optimization()
     optimizer.set_verbose(verbose)
-    optimizer.optimize(200)
+    optimizer.optimize(nsteps)
 
     # # read out optimized poses
     for node_id in nodes:
