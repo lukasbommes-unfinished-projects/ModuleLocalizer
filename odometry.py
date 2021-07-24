@@ -82,7 +82,7 @@ def initialize(fast, orb, camera_matrix, min_parallax=60.0):
         print(median_dist)
 
         # if distance exceeds threshold choose frame as second keyframe
-        if median_dist >= min_parallax:
+        if median_dist >= min_parallax or len(matches) < 200:
             pose_graph.add_node(1, frame=frame, frame_name=frame_name, kp=kp, des=des)
             break
 
@@ -390,7 +390,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    #frame_files = frame_files[1400:] #[10094:] #[18142:] #[11138:]
+    #frame_files = frame_files[1410:] #[10094:] #[18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"

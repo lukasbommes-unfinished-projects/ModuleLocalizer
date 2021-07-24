@@ -500,7 +500,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    frame_files = frame_files[10094:] #[1680:] #[100:] # [18142:] #[11138:]
+    #frame_files = frame_files[10094:] #[1680:] #[100:] # [18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"
