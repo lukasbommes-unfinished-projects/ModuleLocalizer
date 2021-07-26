@@ -4,8 +4,6 @@ import numpy as np
 from mapper.transforms import affine_matrix_from_points, decompose_matrix, \
     active_matrix_from_extrinsic_euler_xyz
 
-from mapper.geotransforms import geodetic2enu
-
 
 def to_twist(R, t):
     """Convert a 3x3 rotation matrix and translation vector (shape (3,))
@@ -57,35 +55,6 @@ def triangulate_map_points(last_pts, current_pts, R1, t1, R2, t2, camera_matrix)
     pts_3d = cv2.triangulatePoints(proj_matrix1, proj_matrix2, last_pts.reshape(-1, 2).T, current_pts.reshape(-1, 2).T).T
     pts_3d = cv2.convertPointsFromHomogeneous(pts_3d).reshape(-1, 3)
     return pts_3d
-
-
-def gps_to_ltp(gps):
-    """Converts GPS readings from WGS-84 (lat, lon, height) to local tangent plane.
-    The first gps reading is choosen as origin.
-
-    Args:
-        gps (`numpy.ndarray`): Shape (-1, 3). Each row is a GPS position in
-            WGS-84 coordinates of the form longitude (degrees), latitude
-            (degrees), height (meters).
-
-    Returns:
-        gps_ltp (`numpy.ndarray`): Shape (-1, 3). Corresponding GPS position
-            in local tangent plane coordinates East (meters), North (meters),
-            height (meters). The origin of the local tangent plane is the first
-            input gps position.
-
-        origin (`tuple` of `float`): WGS-84 latitue, longitude and height of
-            the selected origin of the local tangent plane.
-    """
-    lon0, lat0, h0 = gps[0, :]
-    print(("Origin of local tangent plane: lat: {} deg -- long: {} deg "
-          "-- height: {} m").format(lat0, lon0, h0))
-    gps_ltp = np.zeros_like(gps)
-    for i, (lon, lat, h) in enumerate(gps):
-        e, n, u = geodetic2enu(lat, lon, h, lat0, lon0, h0)
-        gps_ltp[i, :] = np.array([e, n, u])
-    origin = (lat0, lon0, h0)
-    return gps_ltp, origin
 
 
 # def invert_z_axis(pose_graph, map_points):

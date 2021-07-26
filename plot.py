@@ -14,7 +14,8 @@ from OpenGL.GL import *
 from pytransform3d.rotations import axis_angle_from_matrix
 
 from mapper.map_points import MapPoints
-from mapper.geometry import from_twist, transform_to_gps_frame, gps_to_ltp
+from mapper.geometry import from_twist, transform_to_gps_frame
+from mapper.gps import gps_to_ltp, interpolate_gps
 from mapper.modules import triangulate_modules
 
 
@@ -29,8 +30,9 @@ gps = np.zeros((len(gps_), 3))
 gps[:, 0:2] = np.array(gps_)
 gps, _ = gps_to_ltp(gps)
 
-gps_positions = []
-#gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
+#gps_positions = []
+gps_positions = transform_to_gps_frame(pose_graph, map_points, gps)
+gps_positions = interpolate_gps(gps_positions)
 
 # whether to visualize tracked PV modules
 plot_modules = True

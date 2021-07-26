@@ -4,3 +4,6 @@ __pycache__
 .Trash-*
 camera_calibration/out
 data_processing
+
+new_pipeline/selected_frames
+new_pipeline/*.avi

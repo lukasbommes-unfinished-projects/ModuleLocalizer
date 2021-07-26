@@ -22,9 +22,6 @@ def preprocess_radiometric_frame(frame, equalize_hist=True):
     frame = (frame*255.0).astype(np.uint8)
     if equalize_hist:
         frame = cv2.equalizeHist(frame)
-        # CLAHE results in vastly different numbers of feature points depending on clipLimit
-        #clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(8,8))
-        #frame = clahe.apply(frame)
     return frame
 
 
@@ -56,19 +53,27 @@ class Capture:
 
     def get_next_frame(self, preprocess=True, undistort=False,
             equalize_hist=True):
+        frame, masks, frame_name, mask_names = self.get_frame(
+            self.frame_counter, preprocess, undistort,
+            equalize_hist)
+        self.frame_counter += 1
+        return frame, masks, frame_name, mask_names
+
+
+    def get_frame(self, index, preprocess=True, undistort=False,
+            equalize_hist=True):
         frame = None
         masks = None
         frame_name = None
         mask_names = None
-        if self.frame_counter < self.num_images:
-            image_file = self.image_files[self.frame_counter]
+        if index < self.num_images:
+            image_file = self.image_files[index]
             frame_name = str.split(os.path.basename(image_file), ".")[0]
             frame = cv2.imread(image_file, cv2.IMREAD_ANYDEPTH)
             if self.mask_files is not None:
-                mask_file = self.mask_files[self.frame_counter]
+                mask_file = self.mask_files[index]
                 masks = [cv2.imread(m, cv2.IMREAD_ANYDEPTH) for m in mask_file]
                 mask_names = [str.split(os.path.basename(m), ".")[0] for m in mask_file]
-            self.frame_counter += 1
             if preprocess:
                 frame = preprocess_radiometric_frame(frame, equalize_hist)
             if undistort and self.camera_matrix is not None and self.dist_coeffs is not None:

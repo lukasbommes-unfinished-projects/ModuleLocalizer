@@ -6,7 +6,6 @@ from collections import defaultdict, Counter
 import numpy as np
 import cv2
 import networkx as nx
-from scipy.spatial import KDTree
 
 from mapper.map_points import MapPoints, get_representative_orb
 from mapper.pose_graph import get_neighbors
@@ -42,7 +41,7 @@ def dump_result(path="."):
 # TODO: Since a planar scene is observed, using the essential matrix is not optimal
 # higher accuracy can be achieved by estimating a homography (cv2.findHomography)
 # and decomposing the homography into possible rotations and translations (see experiments/Untitled9.ipynb)
-def initialize(fast, orb, camera_matrix, min_parallax=60.0):
+def initialize(orb, camera_matrix, min_parallax=60.0):
     """Initialize two keyframes, the camera poses and a 3D point cloud.
 
     Args:
@@ -58,7 +57,6 @@ def initialize(fast, orb, camera_matrix, min_parallax=60.0):
 
     # get first key frame
     frame, frame_name = get_frame(cap)
-    #kp, des = extract_keypoints(frame, fast, orb)
     kp, des = extract_keypoints(frame, orb)
     pose_graph.add_node(0, frame=frame, frame_name=frame_name, kp=kp, des=des)
 
@@ -71,7 +69,6 @@ def initialize(fast, orb, camera_matrix, min_parallax=60.0):
         frame_idx_init += 1
 
         # extract keypoints and match with first key frame
-        #kp, des = extract_keypoints(frame, fast, orb)
         kp, des = extract_keypoints(frame, orb)
         matches, last_pts, current_pts, match_frame = match(bf,
             pose_graph.nodes[0]["frame"], frame, pose_graph.nodes[0]["des"],
@@ -390,7 +387,7 @@ if __name__ == "__main__":
 
     frames_root = "data_processing/splitted"
     frame_files = sorted(glob.glob(os.path.join(frames_root, "radiometric", "*.tiff")))
-    #frame_files = frame_files[1410:] #[10094:] #[18142:] #[11138:]
+    frame_files = frame_files[3855:5112] #[2173:3550] #[0:1280] #[10094:] #[18142:] #[11138:]
     cap = Capture(frame_files, None, camera_matrix, dist_coeffs)
 
     gps_file = "data_processing/splitted/gps/gps.json"
@@ -398,7 +395,6 @@ if __name__ == "__main__":
 
     #orb = cv2.ORB_create()
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    fast = cv2.FastFeatureDetector_create(threshold=12, nonmaxSuppression=True)
     orb_scale_factor = 1.2
     orb_nlevels = 8
     orb = cv2.ORB_create(nfeatures=5000, fastThreshold=12, scaleFactor=orb_scale_factor, nlevels=orb_nlevels)
@@ -413,7 +409,7 @@ if __name__ == "__main__":
 
     ################################################################################
 
-    pose_graph, map_points, frame_idx = initialize(fast, orb, camera_matrix)
+    pose_graph, map_points, frame_idx = initialize(orb, camera_matrix)
     current_kp = None
 
     while(True):
@@ -441,7 +437,6 @@ if __name__ == "__main__":
             print("frame", frame_idx)
 
             # get initial pose estimate by matching keypoints with previous KF
-            #current_kp, current_des = extract_keypoints(frame, fast, orb)
             current_kp, current_des = extract_keypoints(frame, orb)
             prev_node_id = sorted(pose_graph.nodes)[-1]
             matches, last_pts, current_pts, match_frame = match(bf,
