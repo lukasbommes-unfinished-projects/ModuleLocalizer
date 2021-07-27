@@ -73,6 +73,8 @@ def transform_to_gps_frame(pose_graph, map_points, gps):
 
     Estimates a SIM(3) transform based on all keyframe positions and
     corresponding GPS positions.
+
+    Note: Pose graph and map points are changed inplace.
     """
     nodes = list(sorted(pose_graph.nodes))
     poses = [from_twist(pose_graph.nodes[node_id]["pose"]) for node_id in nodes]
